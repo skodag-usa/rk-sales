@@ -37,27 +37,34 @@ var HEADERS = [
   'Product Keyword', 'Product Name', 'PO Value', 'Product Value', 'Freight Charges',
   'GST Value', 'Total Value', 'Commission Type', 'Commission %', 'Commission Fixed',
   'Commission Value %', 'Total Commission', 'Payment Terms', 'Paymet Status',
-  'WB/Billing', 'Remark', 'Accounts Remark', 'Edit Link', 'Timestamp', 'Response ID'
+  'WB/Billing', 'Remark', 'Accounts Remark', 'Revisit', 'Edit Link', 'Timestamp', 'Response ID'
 ];
 var ID_COL = HEADERS.length;
 
 var KPI_FORMULAS = [
   ["=COUNTA('All Entries'!A2:A)"],
+  ["=SUM('All Entries'!N2:N)"],
+  ["=SUM('All Entries'!O2:O)"],
+  ["=SUM('All Entries'!Q2:Q)"],
   ["=SUM('All Entries'!R2:R)"],
+  ["=SUM('All Entries'!V2:V)"],
   ["=SUM('All Entries'!W2:W)"],
   ['=COUNTIFS(\'All Entries\'!A2:A,"<>",\'All Entries\'!Y2:Y,"<>RCD")'],
-  ['=SUMIFS(\'All Entries\'!R2:R,\'All Entries\'!A2:A,"<>",\'All Entries\'!Y2:Y,"<>RCD")']
+  ['=SUMIFS(\'All Entries\'!R2:R,\'All Entries\'!A2:A,"<>",\'All Entries\'!Y2:Y,"<>RCD")'],
+  ['=SUMIFS(\'All Entries\'!R2:R,\'All Entries\'!A2:A,"<>",\'All Entries\'!Y2:Y,"=RCD")']
 ];
 var LAST10_FORMULA = '=IFERROR(QUERY(\'All Entries\'!A1:Y,"select A,B,C,D,E,L,M,O,R,W,X,Y where A is not null order by A desc limit 10",1),"No transactions yet")';
 
 function doGet(e) {
   var pwaAsset = e && e.parameter ? String(e.parameter.pwa || '') : '';
   if (pwaAsset === 'manifest') {
+    var appUrl = ScriptApp.getService().getUrl() || './';
     return ContentService.createTextOutput(JSON.stringify({
       name: 'RK Sales',
       short_name: 'RK Sales',
       description: 'Offline-first sales entry and dashboard',
-      start_url: './',
+      start_url: appUrl,
+      scope: appUrl,
       display: 'standalone',
       background_color: '#f1f5f9',
       theme_color: '#0f172a',
@@ -112,6 +119,10 @@ function onOpen() {
     .addItem('Send monthly email report now', 'sendAutomatedMonthlyEmailReport')
     .addItem('Setup automated monthly email trigger (1st of month)', 'setupMonthlyEmailTrigger')
     .addItem('Remove automated monthly email trigger', 'removeMonthlyEmailTrigger')
+    .addSeparator()
+    .addItem('Create data backup now', 'createDataBackup')
+    .addItem('Setup nightly backup trigger (1:00 AM)', 'setupNightlyBackupTrigger')
+    .addItem('Remove nightly backup trigger', 'removeNightlyBackupTrigger')
     .addToUi();
 }
 
@@ -375,23 +386,28 @@ function setupRKSalesSheets() {
 
   if (dash.getLastRow() === 0) {
     dash.getRange('A1').setValue('RK SALES DASHBOARD (MULTI-YEAR)').setFontSize(16).setFontWeight('bold');
-    dash.getRange('A3:B7').setValues([
+    dash.getRange('A3:B12').setValues([
       ['Total entries', ''],
-      ['Total sales (Total Value ₹)', ''],
-      ['Total commission ₹', ''],
+      ['Total PO Value ₹', ''],
+      ['Total Sales Value (Product Value) ₹', ''],
+      ['Total GST Value ₹', ''],
+      ['Total Value (Sales) ₹', ''],
+      ['Total Commission Value % ₹', ''],
+      ['Total Commission ₹', ''],
       ['Payment pending (entries)', ''],
-      ['Payment pending ₹', '']
+      ['Payment pending ₹', ''],
+      ['Collected (RCD) ₹', '']
     ]);
-    dash.getRange('A3:A7').setFontWeight('bold');
-    dash.getRange('B4:B5').setNumberFormat('#,##0.00');
-    dash.getRange('B7').setNumberFormat('#,##0.00');
-    dash.getRange('A10').setValue('LAST 10 TRANSACTIONS').setFontWeight('bold');
-    dash.getRange('A11:L11').setFontWeight('bold').setBackground('#d9ead3');
+    dash.getRange('A3:A12').setFontWeight('bold');
+    dash.getRange('B4:B10').setNumberFormat('#,##0.00');
+    dash.getRange('B12').setNumberFormat('#,##0.00');
+    dash.getRange('A14').setValue('LAST 10 TRANSACTIONS').setFontWeight('bold');
+    dash.getRange('A15:L15').setFontWeight('bold').setBackground('#d9ead3');
   }
 
   if (String(dash.getRange('A3').getValue()) === 'Total entries') {
-    dash.getRange('B3:B7').setFormulas(KPI_FORMULAS);
-    dash.getRange('A11').setFormula(LAST10_FORMULA);
+    dash.getRange('B3:B12').setFormulas(KPI_FORMULAS);
+    dash.getRange('A15').setFormula(LAST10_FORMULA);
   }
 
   try {
@@ -556,6 +572,7 @@ function saveEntry(payload) {
       payload.wbBilling || '',
       payload.remark || '',
       payload.accountsRemark || '',
+      (payload.revisit === true || payload.revisit === 'YES') ? 'YES' : 'NO',
       editLink,
       new Date(),
       id
@@ -636,8 +653,9 @@ function buildDashboardData_(ss, all) {
         wbBilling: String(r[25] || ''),
         remark: String(r[26] || ''),
         accountsRemark: String(r[27] || ''),
-        timestamp: r[29] instanceof Date ? Utilities.formatDate(r[29], Session.getScriptTimeZone(), 'dd-MMM-yyyy HH:mm') : String(r[29] || ''),
-        responseId: String(r[30] || '')
+        revisit: (String(r[28] || '').toUpperCase() === 'YES' || r[28] === true),
+        timestamp: (r.length >= 32 ? r[30] : r[29]) instanceof Date ? Utilities.formatDate(r.length >= 32 ? r[30] : r[29], Session.getScriptTimeZone(), 'dd-MMM-yyyy HH:mm') : String((r.length >= 32 ? r[30] : r[29]) || ''),
+        responseId: String((r.length >= 32 ? r[31] : r[30]) || '')
       });
     }
   }
@@ -661,8 +679,16 @@ function parseMonthYearFields_(raw) {
 }
 
 function upsert_(sh, rowNum, row) {
+  var targetRow = rowNum ? rowNum : sh.getLastRow() + 1;
   if (rowNum) sh.getRange(rowNum, 1, 1, row.length).setValues([row]);
-  else sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+  else sh.getRange(targetRow, 1, 1, row.length).setValues([row]);
+
+  try {
+    sh.getRange(targetRow, 17).setFormula('=ROUND((O' + targetRow + '+P' + targetRow + ')*0.18, 2)');
+    sh.getRange(targetRow, 18).setFormula('=ROUND(O' + targetRow + '+P' + targetRow + '+Q' + targetRow + ', 2)');
+    sh.getRange(targetRow, 22).setFormula('=ROUND(O' + targetRow + '*T' + targetRow + ', 2)');
+    sh.getRange(targetRow, 23).setFormula('=ROUND(V' + targetRow + '+U' + targetRow + ', 2)');
+  } catch (err) {}
 }
 
 function getMonthSheet_(ss, monthYear) {
@@ -1307,4 +1333,113 @@ function removeMonthlyEmailTrigger() {
       ScriptApp.deleteTrigger(triggers[i]);
     }
   }
+}
+
+// =========================================================================
+// AUTOMATED NIGHTLY BACKUP SUBSYSTEM (30-DAY RETENTION)
+// =========================================================================
+
+/**
+ * Creates a complete snapshot backup copy of the master spreadsheet
+ * in the "RK Sales Backups" Google Drive folder, and deletes backups older than 30 days.
+ */
+function createDataBackup() {
+  var ss = getSS_();
+  var now = new Date();
+  var tz = Session.getScriptTimeZone();
+  var timeStamp = Utilities.formatDate(now, tz, 'yyyy-MM-dd_HHmm');
+  var backupName = 'RK_Sales_Backup_' + timeStamp;
+
+  var folderName = 'RK Sales Backups';
+  var folders = DriveApp.getFoldersByName(folderName);
+  var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+
+  var masterFile = DriveApp.getFileById(ss.getId());
+  var backupFile = masterFile.makeCopy(backupName, folder);
+
+  // 30-day retention cleanup
+  var thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+  var files = folder.getFiles();
+  var deletedCount = 0;
+  while (files.hasNext()) {
+    var f = files.next();
+    if (String(f.getName()).indexOf('RK_Sales_Backup_') === 0) {
+      var created = f.getDateCreated();
+      if (created && created < thirtyDaysAgo) {
+        f.setTrashed(true);
+        deletedCount++;
+      }
+    }
+  }
+
+  console.log('Backup created: ' + backupName + ' (Retention purged ' + deletedCount + ' old backups)');
+  return {
+    ok: true,
+    fileName: backupName,
+    fileId: backupFile.getId(),
+    fileUrl: backupFile.getUrl ? backupFile.getUrl() : '',
+    folderUrl: folder.getUrl ? folder.getUrl() : '',
+    deletedCount: deletedCount
+  };
+}
+
+/**
+ * Installs a nightly Apps Script trigger to run createDataBackup() daily at 1:00 AM.
+ */
+function setupNightlyBackupTrigger() {
+  removeNightlyBackupTrigger();
+  ScriptApp.newTrigger('createDataBackup')
+    .timeBased()
+    .everyDays(1)
+    .atHour(1)
+    .create();
+
+  try {
+    SpreadsheetApp.getUi().alert(
+      'Nightly Backup Trigger Installed',
+      'RK Sales will automatically back up all data to Google Drive folder "RK Sales Backups" every night at 1:00 AM (30-day retention).',
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (e) {}
+  return true;
+}
+
+/**
+ * Removes any active nightly backup trigger.
+ */
+function removeNightlyBackupTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'createDataBackup') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  return true;
+}
+
+/**
+ * Admin on-demand backup endpoint from the Web App.
+ */
+function triggerManualBackup(payload) {
+  if (!payload || typeof payload !== 'object') throw new Error('Missing backup payload.');
+  var ss = getSS_();
+  var authCode = String(payload.authCode || '').toUpperCase().trim();
+  var authPin = String(payload.authPin || '').trim();
+
+  var internal = getSalesPersonsInternal_(ss);
+  var authUser = null;
+  for (var i = 0; i < internal.length; i++) {
+    if (internal[i].code.toUpperCase() === authCode) {
+      authUser = internal[i];
+      break;
+    }
+  }
+  if (!authUser || !authUser.active || String(authUser.pin).trim() !== authPin) {
+    throw new Error('Authentication failed. Please verify your PIN.');
+  }
+  if (authUser.role !== 'ADMIN') {
+    throw new Error('Permission denied: Only Admin can trigger on-demand backups.');
+  }
+
+  return createDataBackup();
 }

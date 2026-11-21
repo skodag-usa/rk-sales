@@ -7,6 +7,8 @@
   <title>RK Sales — Multi-Year Mobile Entry &amp; Dashboard</title>
   <meta name="theme-color" content="#0f172a" />
   <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="?pwa=manifest" />
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -95,6 +97,11 @@
           <span id="barUserRole" class="px-1.5 py-0.2 rounded text-[10px] font-bold"></span>
         </div>
         <div class="flex items-center gap-2.5 shrink-0">
+          <button id="backupDataBtn" type="button" title="Backup Master Sheet to Google Drive"
+            class="hidden px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+            Backup
+          </button>
           <button id="openEmailReportBtn" type="button"
             class="hidden px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm transition">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
@@ -205,8 +212,18 @@
 
           <div>
             <label for="partyName" class="block text-xs font-semibold text-slate-700 mb-1">Party Name *</label>
-            <input id="partyName" type="text" required placeholder="Customer / Company name"
+            <input id="partyName" type="text" list="partyList" required placeholder="Customer / Company name" autocomplete="off"
               class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            <datalist id="partyList"></datalist>
+          </div>
+
+          <div class="pt-0.5">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input id="revisitCheckbox" type="checkbox" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300" />
+              <span class="text-xs font-bold text-amber-900 flex items-center gap-1">
+                <span>⚠️</span> Need to Revisit (Follow-up required)
+              </span>
+            </label>
           </div>
 
           <div>
@@ -237,7 +254,7 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label for="poNo" class="block text-xs font-semibold text-slate-700 mb-1">Po No. *</label>
-              <input id="poNo" type="text" required placeholder="PO # or VERBAL"
+              <input id="poNo" type="text" required value="VERBAL" placeholder="PO # or VERBAL"
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             </div>
             <div>
@@ -250,7 +267,7 @@
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label for="piNo" class="block text-xs font-semibold text-slate-700 mb-1">PI No.</label>
-              <input id="piNo" type="text" placeholder="Optional"
+              <input id="piNo" type="text" placeholder="e.g. 2627-101"
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             </div>
             <div>
@@ -278,31 +295,42 @@
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3.5">
           <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">3. Product &amp; Pricing (₹)</h2>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label for="productKeyword" class="block text-xs font-semibold text-slate-700 mb-1">Product Keyword
-                *</label>
-              <select id="productKeyword" required
-                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none">
-                <option value="">Select...</option>
-                <option value="LS">LS — Leadshine</option>
-                <option value="BC">BC — Bochu</option>
-                <option value="RP">RP — Rack/Pinion</option>
-                <option value="LM">LM — LM Rail/Block</option>
-                <option value="GB">GB — Gearbox</option>
-                <option value="DC">DC — Dairuike Chuck</option>
-                <option value="SP">SP — Spindle/Bracket</option>
-                <option value="VF">VF — VFD</option>
-                <option value="KK">KK — KK Robot</option>
-                <option value="SN">SN — Ball Screw/Nut</option>
-                <option value="OT">OT — Other</option>
-              </select>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Product Keyword *</label>
+            <div id="prodKeywordPills" class="flex flex-wrap gap-1 mb-1.5">
+              <button type="button" data-val="LS + BC"
+                class="pill-btn px-2.5 py-1 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-900 text-xs font-bold hover:bg-indigo-100">LS + BC</button>
+              <button type="button" data-val="LS"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">LS</button>
+              <button type="button" data-val="BC"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">BC</button>
+              <button type="button" data-val="RP"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">RP</button>
+              <button type="button" data-val="LM"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">LM</button>
+              <button type="button" data-val="GB"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">GB</button>
+              <button type="button" data-val="DC"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">DC</button>
+              <button type="button" data-val="SP"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">SP</button>
+              <button type="button" data-val="VF"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">VF</button>
+              <button type="button" data-val="KK"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">KK</button>
+              <button type="button" data-val="SN"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">SN</button>
+              <button type="button" data-val="OT"
+                class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">OT</button>
             </div>
-            <div>
-              <label for="productName" class="block text-xs font-semibold text-slate-700 mb-1">Product Name</label>
-              <input id="productName" type="text" placeholder="Model / specification"
-                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
-            </div>
+            <input id="productKeyword" type="text" required placeholder="Selected keyword(s) or custom"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none" />
+          </div>
+
+          <div>
+            <label for="productName" class="block text-xs font-semibold text-slate-700 mb-1">Product Name</label>
+            <input id="productName" type="text" placeholder="Model / specification"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
           </div>
 
           <div class="grid grid-cols-3 gap-2.5">
@@ -312,7 +340,7 @@
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             </div>
             <div>
-              <label for="productValue" class="block text-xs font-semibold text-slate-700 mb-1">Product Val *</label>
+              <label for="productValue" class="block text-xs font-semibold text-slate-700 mb-1">Sales Val *</label>
               <input id="productValue" type="number" inputmode="decimal" step="0.01" min="0" required placeholder="0"
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             </div>
@@ -419,12 +447,13 @@
 
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1.5">Payment Status</label>
-              <div id="statusPills" class="grid grid-cols-2 gap-1.5">
-                <button type="button" data-val=""
-                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Pending</button>
+              <div id="statusPills" class="grid grid-cols-3 gap-1.5">
                 <button type="button" data-val="RCD"
-                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">RCD
-                  (Received)</button>
+                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">RCD (Received)</button>
+                <button type="button" data-val=""
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Pending</button>
+                <button type="button" data-val="PARTIAL"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Partial</button>
               </div>
             </div>
           </div>
@@ -496,26 +525,36 @@
       </div>
 
       <!-- KPI Cards -->
-      <div class="grid grid-cols-2 gap-2.5">
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-          <div class="text-[11px] font-semibold text-slate-500">Total Sales (₹)</div>
-          <div id="kpiSales" class="text-lg font-bold text-slate-900 mt-1">₹0</div>
+          <div class="text-[11px] font-semibold text-slate-500">Total PO Value (₹)</div>
+          <div id="kpiPoVal" class="text-lg font-bold text-slate-900 mt-1">₹0</div>
           <div id="kpiEntries" class="text-[11px] text-slate-500 mt-0.5">0 entries</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
+          <div class="text-[11px] font-semibold text-slate-500">Total Sales Value (₹)</div>
+          <div id="kpiSalesVal" class="text-lg font-bold text-blue-900 mt-1">₹0</div>
+          <div id="kpiProductVal" class="text-[11px] text-slate-500 mt-0.5">Product: ₹0</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
+          <div class="text-[11px] font-semibold text-slate-500">Total Invoiced (₹)</div>
+          <div id="kpiSales" class="text-lg font-bold text-slate-900 mt-1">₹0</div>
+          <div id="kpiGstAmt" class="text-[11px] text-slate-500 mt-0.5">GST: ₹0</div>
         </div>
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
           <div class="text-[11px] font-semibold text-slate-500">Total Commission (₹)</div>
           <div id="kpiComm" class="text-lg font-bold text-sky-700 mt-1">₹0</div>
-          <div id="kpiProductVal" class="text-[11px] text-slate-500 mt-0.5">Product: ₹0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Fixed + % Comm</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
+          <div class="text-[11px] font-semibold text-slate-500">Collected (RCD)</div>
+          <div id="kpiCollectedAmt" class="text-lg font-bold text-emerald-600 mt-1">₹0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Payment received</div>
         </div>
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
           <div class="text-[11px] font-semibold text-slate-500">Payment Pending (₹)</div>
           <div id="kpiPendingAmt" class="text-lg font-bold text-rose-600 mt-1">₹0</div>
           <div id="kpiPendingCnt" class="text-[11px] text-slate-500 mt-0.5">0 pending orders</div>
-        </div>
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-          <div class="text-[11px] font-semibold text-slate-500">Collected (RCD)</div>
-          <div id="kpiCollectedAmt" class="text-lg font-bold text-emerald-600 mt-1">₹0</div>
-          <div id="kpiGstAmt" class="text-[11px] text-slate-500 mt-0.5">GST: ₹0</div>
         </div>
       </div>
 
@@ -673,22 +712,6 @@
         class="w-full py-3.5 rounded-xl bg-blue-800 hover:bg-blue-900 active:scale-[0.99] text-white text-sm font-bold shadow-md transition">
         Unlock &amp; Sign In
       </button>
-
-      <!-- Demo shortcuts in preview mode -->
-      <div id="demoCredentialsBox" class="pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-        <span class="font-semibold block mb-1">Quick Demo Login:</span>
-        <div class="flex flex-wrap gap-1 justify-center">
-          <button type="button"
-            class="demo-login-chip px-2 py-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-medium"
-            data-code="RK" data-pin="1234">RK (Admin: 1234)</button>
-          <button type="button"
-            class="demo-login-chip px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-medium"
-            data-code="TK" data-pin="1111">TK (Sales: 1111)</button>
-          <button type="button"
-            class="demo-login-chip px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-medium"
-            data-code="SC" data-pin="2222">SC (Sales: 2222)</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -948,6 +971,14 @@
         return 'FY ' + String(startY).slice(-2) + '-' + String(startY + 1).slice(-2);
       }
 
+      function getFyPrefix() {
+        var now = new Date();
+        var y = now.getFullYear();
+        var m = now.getMonth();
+        var startY = (m >= 3) ? y : (y - 1);
+        return String(startY).slice(-2) + String(startY + 1).slice(-2);
+      }
+
       var state = {
         currentUser: null, // { code, name, role, pin }
         enteredPin: '',
@@ -962,7 +993,7 @@
         selectedCommType: 'P',
         selectedCommPct: '5',
         selectedTerms: 'PI',
-        selectedStatus: '',
+        selectedStatus: 'RCD',
         selectedWB: 'B',
         emailReportPeriodType: 'MONTH',
         chartInstance: null
@@ -1016,6 +1047,91 @@
         }
         sel.innerHTML = opts.join('');
         sel.value = String(curY);
+      }
+
+      function populatePartyDatalist() {
+        var dl = $('partyList');
+        if (!dl) return;
+        var partySet = {};
+        state.allEntries.forEach(function (e) {
+          if (e.partyName && e.partyName.trim()) {
+            partySet[e.partyName.trim()] = true;
+          }
+        });
+        var sorted = Object.keys(partySet).sort(function (a, b) {
+          return a.localeCompare(b, undefined, { sensitivity: 'base' });
+        });
+        dl.innerHTML = sorted.map(function (p) {
+          return '<option value="' + escapeHtml(p) + '">';
+        }).join('');
+      }
+
+      function updateCommTypeState(commType) {
+        var ct = commType || state.selectedCommType || 'P';
+        var pctBox = $('commPctPills');
+        var pctButtons = pctBox.querySelectorAll('button[data-val]');
+        var customPct = $('commPctOther');
+        var fixedInput = $('commissionFixed');
+
+        if (ct === 'P') {
+          pctButtons.forEach(function (b) {
+            b.disabled = false;
+            b.classList.remove('opacity-40', 'cursor-not-allowed');
+          });
+          fixedInput.disabled = true;
+          fixedInput.value = '0';
+          fixedInput.classList.add('bg-slate-100', 'cursor-not-allowed');
+        } else if (ct === 'P + F') {
+          pctButtons.forEach(function (b) {
+            b.disabled = false;
+            b.classList.remove('opacity-40', 'cursor-not-allowed');
+          });
+          fixedInput.disabled = false;
+          fixedInput.classList.remove('bg-slate-100', 'cursor-not-allowed');
+        } else if (ct === 'F') {
+          pctButtons.forEach(function (b) {
+            b.disabled = true;
+            b.classList.add('opacity-40', 'cursor-not-allowed');
+          });
+          customPct.classList.add('hidden');
+          fixedInput.disabled = false;
+          fixedInput.classList.remove('bg-slate-100', 'cursor-not-allowed');
+        }
+        updateLiveCalc();
+      }
+
+      function getKeywordTokens() {
+        var raw = $('productKeyword') ? $('productKeyword').value : '';
+        return String(raw || '').split(/[,+\s]+/).map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+      }
+
+      function updateProdKeywordPillStates() {
+        var box = $('prodKeywordPills');
+        if (!box) return;
+        var tokens = getKeywordTokens();
+        var hasLS = tokens.indexOf('LS') !== -1;
+        var hasBC = tokens.indexOf('BC') !== -1;
+        var hasLsBc = hasLS && hasBC;
+
+        var btns = box.querySelectorAll('button[data-val]');
+        btns.forEach(function (b) {
+          var val = b.getAttribute('data-val');
+          var isActive = false;
+          if (val === 'LS + BC') {
+            isActive = hasLsBc;
+          } else {
+            isActive = tokens.indexOf(val.toUpperCase()) !== -1;
+          }
+          b.classList.toggle('active', isActive);
+          if (val === 'LS + BC') {
+            b.classList.toggle('bg-indigo-600', isActive);
+            b.classList.toggle('text-white', isActive);
+            b.classList.toggle('border-indigo-600', isActive);
+            b.classList.toggle('bg-indigo-50', !isActive);
+            b.classList.toggle('text-indigo-900', !isActive);
+            b.classList.toggle('border-indigo-300', !isActive);
+          }
+        });
       }
 
       // ---------- AUTHENTICATION & PIN LOGIN ----------
@@ -1219,8 +1335,10 @@
 
         if (isAdm) {
           $('openEmailReportBtn').classList.remove('hidden');
+          $('backupDataBtn').classList.remove('hidden');
         } else {
           $('openEmailReportBtn').classList.add('hidden');
+          $('backupDataBtn').classList.add('hidden');
         }
 
         // Refresh Sales Person field configuration for current role
@@ -1237,6 +1355,7 @@
         $('headerRoleBadge').classList.add('hidden');
         $('activeUserBar').classList.add('hidden');
         $('openEmailReportBtn').classList.add('hidden');
+        $('backupDataBtn').classList.add('hidden');
         showLoginModal();
         showToast('Logged out successfully.');
       }
@@ -1397,9 +1516,9 @@
         var fr = toNum($('freightCharges').value);
         var gst = (pv + fr) * 0.18;
         var total = pv + fr + gst;
-        var pct = getEffectiveCommPct() / 100;
+        var pct = (state.selectedCommType === 'F') ? 0 : (getEffectiveCommPct() / 100);
         var commVal = pv * pct;
-        var commFix = toNum($('commissionFixed').value);
+        var commFix = (state.selectedCommType === 'P') ? 0 : toNum($('commissionFixed').value);
         var totalComm = commVal + commFix;
 
         $('calcGst').textContent = fmtINR(gst);
@@ -1435,25 +1554,30 @@
         $('month').value = currentCalMonth();
         $('year').value = currentYear();
         $('partyName').value = '';
-        $('poNo').value = '';
+        $('poNo').value = 'VERBAL';
         $('poDate').value = todayIso();
-        $('piNo').value = '';
+        $('piNo').value = getFyPrefix() + '-';
         $('piDate').value = '';
         $('invoiceNo').value = '';
         $('invoiceDate').value = '';
         $('productKeyword').value = '';
+        updateProdKeywordPillStates();
         $('productName').value = '';
         $('poValue').value = '';
         $('productValue').value = '';
+        delete $('productValue').dataset.userEdited;
+        delete $('productValue').dataset.lastPoVal;
         $('freightCharges').value = '';
         $('commissionFixed').value = '';
         $('remark').value = '';
         $('accountsRemark').value = '';
+        $('revisitCheckbox').checked = false;
         setPillValue('regionPills', 'selectedRegion', 'Pune', 'regionOther');
         setPillValue('commTypePills', 'selectedCommType', 'P');
+        updateCommTypeState('P');
         setPillValue('commPctPills', 'selectedCommPct', '5', 'commPctOther');
         setPillValue('termsPills', 'selectedTerms', 'PI', 'termsOther');
-        setPillValue('statusPills', 'selectedStatus', '');
+        setPillValue('statusPills', 'selectedStatus', 'RCD');
         setPillValue('wbPills', 'selectedWB', 'B');
         $('editBanner').classList.add('hidden');
         $('submitBtnText').textContent = 'Save Sales Entry';
@@ -1481,15 +1605,30 @@
         }
 
         $('responseId').value = entry.responseId || '';
-        $('month').value = entry.month || currentCalMonth();
-        if (entry.year) {
-          if (!$('year').querySelector('option[value="' + entry.year + '"]')) {
+
+        // Robust month population
+        var mVal = entry.month ? String(entry.month).toUpperCase().trim() : '';
+        if (!mVal && entry.monthYear) {
+          mVal = String(entry.monthYear).toUpperCase().trim().split('-')[0];
+        }
+        if (CAL_MONTHS.indexOf(mVal) !== -1) {
+          $('month').value = mVal;
+        }
+
+        // Robust year population
+        var yVal = entry.year ? String(entry.year).trim() : '';
+        if (!yVal && entry.monthYear) {
+          var yParts = String(entry.monthYear).trim().split('-');
+          if (yParts.length > 1) yVal = yParts[1];
+        }
+        if (yVal) {
+          if (!$('year').querySelector('option[value="' + yVal + '"]')) {
             var opt = document.createElement('option');
-            opt.value = entry.year;
-            opt.textContent = entry.year;
+            opt.value = yVal;
+            opt.textContent = yVal;
             $('year').appendChild(opt);
           }
-          $('year').value = entry.year;
+          $('year').value = yVal;
         }
 
         populateSalesPersonOptions(entry.salesPerson || '');
@@ -1503,23 +1642,27 @@
         updateSalesPersonFieldForRole();
 
         $('partyName').value = entry.partyName || '';
+        $('revisitCheckbox').checked = !!entry.revisit;
         setPillValue('regionPills', 'selectedRegion', entry.region || 'Pune', 'regionOther');
-        $('poNo').value = entry.poNo || '';
+        $('poNo').value = entry.poNo || 'VERBAL';
         $('poDate').value = entry.poDate || '';
         $('piNo').value = entry.piNo || '';
         $('piDate').value = entry.piDate || '';
         $('invoiceNo').value = entry.invoiceNo || '';
         $('invoiceDate').value = entry.invoiceDate || '';
         $('productKeyword').value = entry.productKeyword || '';
+        updateProdKeywordPillStates();
         $('productName').value = entry.productName || '';
-        $('poValue').value = entry.poValue || '';
-        $('productValue').value = entry.productValue || '';
-        $('freightCharges').value = entry.freightCharges || '';
+        $('poValue').value = entry.poValue !== undefined && entry.poValue !== null ? entry.poValue : '';
+        $('productValue').value = entry.productValue !== undefined && entry.productValue !== null ? entry.productValue : '';
+        $('productValue').dataset.userEdited = 'true';
+        $('freightCharges').value = entry.freightCharges !== undefined && entry.freightCharges !== null ? entry.freightCharges : '';
         setPillValue('commTypePills', 'selectedCommType', entry.commissionType || 'P');
+        updateCommTypeState(entry.commissionType || 'P');
         setPillValue('commPctPills', 'selectedCommPct', String(entry.commissionPct), 'commPctOther');
         $('commissionFixed').value = entry.commissionFixed || '';
         setPillValue('termsPills', 'selectedTerms', entry.paymentTerms || '', 'termsOther');
-        setPillValue('statusPills', 'selectedStatus', entry.paymentStatus || '');
+        setPillValue('statusPills', 'selectedStatus', entry.paymentStatus !== undefined && entry.paymentStatus !== null ? entry.paymentStatus : 'RCD');
         setPillValue('wbPills', 'selectedWB', entry.wbBilling || 'B');
         $('remark').value = entry.remark || '';
         $('accountsRemark').value = entry.accountsRemark || '';
@@ -1664,6 +1807,7 @@
           $('openSheetLink').href = data.sheetUrl;
         }
         $('recentCountBadge').textContent = state.allEntries.length + ' total';
+        populatePartyDatalist();
         populateDashFYOptions();
         if (state.activeTab === 'recent') renderRecentList();
         if (state.activeTab === 'dashboard') renderDashboard();
@@ -1745,6 +1889,7 @@
           monthYear: monthYear,
           salesPerson: salesPersonVal,
           partyName: $('partyName').value.trim(),
+          revisit: $('revisitCheckbox').checked,
           region: regionVal,
           poNo: $('poNo').value.trim(),
           poDate: $('poDate').value,
@@ -1807,6 +1952,7 @@
           var rec = Object.assign({}, payload, {
             srNo: srNo,
             responseId: respId,
+            revisit: payload.revisit,
             gstValue: gst,
             totalValue: totalVal,
             commissionValuePct: commVal,
@@ -1841,7 +1987,7 @@
 
         var list = state.last10.filter(function (item) {
           if (!q) return true;
-          var hay = [item.srNo, item.monthYear, item.salesPerson, item.partyName, item.region, item.poNo, item.productKeyword, item.productName].join(' ').toLowerCase();
+          var hay = [item.srNo, item.monthYear, item.salesPerson, item.partyName, item.region, item.poNo, item.productKeyword, item.productName, item.revisit ? 'revisit' : ''].join(' ').toLowerCase();
           return hay.indexOf(q) !== -1;
         });
 
@@ -1861,12 +2007,17 @@
             ? '<button type="button" data-edit-id="' + escapeHtml(item.responseId) + '" class="shrink-0 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 active:scale-95 transition">Edit</button>'
             : '<span class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium border border-slate-200" title="Only Admin or assigned rep can edit">Locked</span>';
 
+          var cardBorder = item.revisit ? 'border-amber-400 bg-amber-50/40' : 'border-slate-200 bg-white';
+          var srTag = item.revisit
+            ? '<span class="px-1.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[11px] flex items-center gap-1 shadow-sm">⚠️ #' + item.srNo + ' Revisit</span>'
+            : '<span class="text-xs font-bold text-blue-800">#' + item.srNo + '</span>';
+
           return (
-            '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5 space-y-2">' +
+            '<div class="rounded-2xl shadow-sm border ' + cardBorder + ' p-3.5 space-y-2">' +
             '<div class="flex items-start justify-between gap-2">' +
             '<div>' +
             '<div class="flex items-center gap-1.5 flex-wrap">' +
-            '<span class="text-xs font-bold text-blue-800">#' + item.srNo + '</span>' +
+            srTag +
             '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-700">' + escapeHtml(item.monthYear || item.month) + '</span>' +
             '<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] font-bold text-indigo-700">' + escapeHtml(item.salesPerson) + '</span>' +
             '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + badgeCls + '">' + badgeTxt + '</span>' +
@@ -1939,11 +2090,12 @@
           ? fyFiltered
           : fyFiltered.filter(function (x) { return x.month === state.dashMonth; });
 
-        var totalSales = 0, totalComm = 0, totalProduct = 0, totalGst = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0;
+        var totalSales = 0, totalComm = 0, totalProduct = 0, totalPo = 0, totalGst = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0;
         filtered.forEach(function (x) {
+          totalPo += toNum(x.poValue);
+          totalProduct += toNum(x.productValue);
           totalSales += toNum(x.totalValue);
           totalComm += toNum(x.totalCommission);
-          totalProduct += toNum(x.productValue);
           totalGst += toNum(x.gstValue);
           if (x.paymentStatus === 'RCD') {
             collectedAmt += toNum(x.totalValue);
@@ -1953,6 +2105,8 @@
           }
         });
 
+        $('kpiPoVal').textContent = fmtINRCompact(totalPo);
+        $('kpiSalesVal').textContent = fmtINRCompact(totalProduct);
         $('kpiSales').textContent = fmtINRCompact(totalSales);
         $('kpiEntries').textContent = filtered.length + (filtered.length === 1 ? ' entry' : ' entries');
         $('kpiComm').textContent = fmtINRCompact(totalComm);
@@ -2366,12 +2520,57 @@
         }
       }
 
+      // ---------- BACKUP CONTROLLER ----------
+      function handleBackupClick() {
+        if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
+          showToast('Only Admin can trigger backups.', true);
+          return;
+        }
+        var btn = $('backupDataBtn');
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.classList.add('opacity-70');
+        btn.textContent = 'Backing up...';
+
+        if (IS_LIVE_GAS && navigator.onLine !== false) {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              btn.disabled = false;
+              btn.classList.remove('opacity-70');
+              btn.innerHTML = origHtml;
+              if (res && res.ok) {
+                showToast('Backup created: ' + res.fileName + (res.deletedCount ? ' (' + res.deletedCount + ' old purged)' : ''));
+              } else {
+                showToast('Backup completed.', false);
+              }
+            })
+            .withFailureHandler(function (err) {
+              btn.disabled = false;
+              btn.classList.remove('opacity-70');
+              btn.innerHTML = origHtml;
+              showToast('Backup failed: ' + (err.message || err), true);
+            })
+            .triggerManualBackup({
+              authCode: state.currentUser.code,
+              authPin: state.currentUser.pin
+            });
+        } else {
+          setTimeout(function () {
+            btn.disabled = false;
+            btn.classList.remove('opacity-70');
+            btn.innerHTML = origHtml;
+            showToast('Manual backup simulated: spreadsheet copied to "RK Sales Backups" folder (Preview Mode).');
+          }, 400);
+        }
+      }
+
       // ---------- WIRE UP EVENTS ----------
       populateYearOptions();
+      populatePartyDatalist();
       populateDashFYOptions();
 
       setupPillGroup('regionPills', 'selectedRegion', 'regionOther');
-      setupPillGroup('commTypePills', 'selectedCommType');
+      setupPillGroup('commTypePills', 'selectedCommType', null, updateCommTypeState);
       setupPillGroup('commPctPills', 'selectedCommPct', 'commPctOther', updateLiveCalc);
       setupPillGroup('termsPills', 'selectedTerms', 'termsOther');
       setupPillGroup('statusPills', 'selectedStatus');
@@ -2407,7 +2606,56 @@
         }
       });
 
-      ['productValue', 'freightCharges', 'commissionFixed', 'commPctOther'].forEach(function (id) {
+      $('poValue').addEventListener('input', function () {
+        var pvInput = $('productValue');
+        if (!pvInput.dataset.userEdited || pvInput.value === pvInput.dataset.lastPoVal || pvInput.value === '') {
+          pvInput.value = $('poValue').value;
+          pvInput.dataset.lastPoVal = $('poValue').value;
+        }
+        updateLiveCalc();
+      });
+
+      $('productValue').addEventListener('input', function () {
+        $('productValue').dataset.userEdited = 'true';
+        updateLiveCalc();
+      });
+
+      $('prodKeywordPills').addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-val]');
+        if (!btn) return;
+        var val = btn.getAttribute('data-val');
+        var tokens = getKeywordTokens();
+
+        if (val === 'LS + BC') {
+          var hasBoth = (tokens.indexOf('LS') !== -1) && (tokens.indexOf('BC') !== -1);
+          if (hasBoth) {
+            tokens = tokens.filter(function (t) { return t !== 'LS' && t !== 'BC'; });
+          } else {
+            if (tokens.indexOf('LS') === -1) tokens.push('LS');
+            if (tokens.indexOf('BC') === -1) tokens.push('BC');
+          }
+        } else {
+          var upper = val.toUpperCase();
+          var idx = tokens.indexOf(upper);
+          if (idx !== -1) {
+            tokens.splice(idx, 1);
+          } else {
+            tokens.push(upper);
+          }
+        }
+
+        if (tokens.indexOf('LS') !== -1 && tokens.indexOf('BC') !== -1) {
+          var rest = tokens.filter(function (t) { return t !== 'LS' && t !== 'BC'; });
+          $('productKeyword').value = ['LS + BC'].concat(rest).join(' + ');
+        } else {
+          $('productKeyword').value = tokens.join(' + ');
+        }
+        updateProdKeywordPillStates();
+      });
+
+      $('productKeyword').addEventListener('input', updateProdKeywordPillStates);
+
+      ['freightCharges', 'commissionFixed', 'commPctOther'].forEach(function (id) {
         $(id).addEventListener('input', updateLiveCalc);
       });
 
@@ -2428,6 +2676,7 @@
       window.addEventListener('offline', updateConnectionStatus);
       $('recentSearch').addEventListener('input', renderRecentList);
       $('logoutBtn').addEventListener('click', logoutUser);
+      $('backupDataBtn').addEventListener('click', handleBackupClick);
 
       // Change PIN handlers
       $('openChangePinBtn').addEventListener('click', openChangePinDialog);
@@ -2486,18 +2735,6 @@
         executeLogin(selCode, state.enteredPin);
       });
 
-      // Demo login shortcuts
-      document.querySelectorAll('.demo-login-chip').forEach(function (chip) {
-        chip.addEventListener('click', function () {
-          var code = chip.getAttribute('data-code');
-          var pin = chip.getAttribute('data-pin');
-          $('loginUserSelect').value = code;
-          state.enteredPin = pin;
-          updatePinDots();
-          executeLogin(code, pin);
-        });
-      });
-
       $('fillSampleBtn').addEventListener('click', function () {
         if (!state.currentUser) {
           showLoginModal();
@@ -2528,7 +2765,7 @@
         setPillValue('commPctPills', 'selectedCommPct', '5', 'commPctOther');
         $('commissionFixed').value = '0';
         setPillValue('termsPills', 'selectedTerms', 'PI', 'termsOther');
-        setPillValue('statusPills', 'selectedStatus', '');
+        setPillValue('statusPills', 'selectedStatus', 'RCD');
         setPillValue('wbPills', 'selectedWB', 'B');
         $('remark').value = 'Dispatch via BlueDart';
         updateTargetTabBadge();

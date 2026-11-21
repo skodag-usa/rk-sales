@@ -22,6 +22,8 @@ const requiredIds = [
   'loginError', 'keypadBackspace', 'keypadClear', 'loginSubmitBtn',
   'changePinModal', 'changePinTargetUser', 'currentPinInput', 'newPinInput',
   'confirmPinInput', 'saveNewPinBtn', 'toast',
+  // New suggestions & backup elements
+  'partyList', 'revisitCheckbox', 'backupDataBtn', 'prodKeywordPills', 'kpiPoVal', 'kpiSalesVal',
   // Email Report elements
   'openEmailReportBtn', 'emailReportModal', 'closeEmailReportBtn',
   'emailPeriodPills', 'emailMonthGroup', 'emailMonthSelect', 'emailYearSelect',

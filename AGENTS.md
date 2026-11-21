@@ -9,14 +9,15 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
   - `node test/test_e2e_simulation.js`
   - `node test/test_email_report.js`
   - `node test/test_frontend.js`
-- No build, lint, or typecheck scripts; `package.json` is empty. Run all four test files for verification.
+  - `node test/test_backup.js`
+- No build, lint, or typecheck scripts; `package.json` is empty. Run all five test files for verification.
 - Deploy: paste `Code.gs` + `Index.html` (HTML file must be named `Index`) into the bound Apps Script project, then Deploy → Web app (Execute as: Me, Who has access: Anyone). Sheet stays private.
 
 ## Architecture
 
 - Sheets: `Dashboard`, `Report`, `All Entries`, `Lookup`, plus one tab per month (e.g. `NOV-2026`). `CORE_SHEETS`.
 - `Lookup` columns A–F: `Code`, `Full Name`, `Active` (YES/NO), `PIN`, `Role` (ADMIN/SALES), `Email`. Auto-migrates 3- or 5-column legacy sheets.
-- `All Entries` schema is `HEADERS` in `Code.gs` (31 columns); `ID_COL = HEADERS.length` (Response ID). Month tabs are created per month.
+- `All Entries` schema is `HEADERS` in `Code.gs` (32 columns); `ID_COL = HEADERS.length` (Response ID). Column 29 is `Revisit` (YES/NO). Month tabs are created per month.
 - Fiscal year runs Apr–Mar (`FY_MONTHS`); quarters Q1=Apr–Jun … Q4=Jan–Mar. `CAL_MONTHS` is calendar order.
 - `SPREADSHEET_ID` is hardcoded; `getSS_()` prefers the active spreadsheet, else opens by ID from script properties.
 
@@ -47,6 +48,13 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
 - `sendEmailReport(payload)` takes `authCode`/`authPin`/`toEmails`/`filters`; empty `toEmails` auto-resolves admin emails.
 - Automated trigger: `setupMonthlyEmailTrigger()` / `removeMonthlyEmailTrigger()`; `sendAutomatedMonthlyEmailReport()` runs on the 1st at 8 AM (Asia/Kolkata).
 - Menu items registered in `onOpen()`.
+
+## Backup subsystem
+
+- Nightly backup runs at 1:00 AM (`setupNightlyBackupTrigger()` / `removeNightlyBackupTrigger()`).
+- Copies Master spreadsheet to Google Drive folder `"RK Sales Backups"` named `RK_Sales_Backup_yyyy-MM-dd_HHmm`.
+- Enforces 30-day retention by automatically purging backup files older than 30 days.
+- Admin can also trigger manual backup on-demand via web app button (`#backupDataBtn`) or `RK Sales Menu` → `Backup Data Now`.
 
 ## Gotchas
 
