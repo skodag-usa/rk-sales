@@ -1,0 +1,2556 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>RK Sales — Multi-Year Mobile Entry &amp; Dashboard</title>
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="?pwa=manifest" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .pill-btn {
+      transition: all 0.15s ease;
+    }
+
+    .pill-btn.active {
+      background-color: #1e3a8a;
+      color: #ffffff;
+      border-color: #1e3a8a;
+      box-shadow: 0 1px 2px rgba(30, 58, 138, 0.25);
+    }
+
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+      /* prevents iOS zoom on focus */
+    }
+
+    .pin-dot.filled {
+      background-color: #1e3a8a !important;
+      border-color: #1e3a8a !important;
+      transform: scale(1.15);
+    }
+  </style>
+</head>
+
+<body class="min-h-screen pb-24">
+  <!-- Top App Bar -->
+  <header class="sticky top-0 z-30 bg-slate-900 text-white shadow-md">
+    <div class="max-w-2xl mx-auto px-4 py-2.5 flex items-center justify-between gap-2">
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-base font-bold tracking-tight leading-tight">RK Sales Master</h1>
+          <span id="headerRoleBadge"
+            class="hidden px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"></span>
+        </div>
+        <p id="modeSubtitle" class="text-[11px] text-slate-300">Connecting...</p>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button id="installPwaBtn" type="button" title="Install RK Sales app"
+          class="hidden px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white active:scale-95 transition">
+          Install App
+        </button>
+        <button id="refreshBtn" type="button" title="Sync with Sheet"
+          class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 active:scale-95 transition">
+          Sync
+        </button>
+        <a id="openSheetLink"
+          href="https://docs.google.com/spreadsheets/d/12WViovDOoOFiu7vQDTY2SiqTaKw5aiF4F46PPN7Xesk/edit"
+          target="_blank" rel="noopener noreferrer"
+          class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white active:scale-95 transition">
+          Sheet
+        </a>
+      </div>
+    </div>
+
+    <!-- Active User Sub-Bar -->
+    <div id="activeUserBar" class="hidden bg-slate-800 border-t border-slate-700/80 px-4 py-1.5 text-xs text-slate-300">
+      <div class="max-w-2xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-1.5 truncate">
+          <span class="text-slate-400">User:</span>
+          <strong id="barUserName" class="text-white font-semibold truncate"></strong>
+          <span id="barUserRole" class="px-1.5 py-0.2 rounded text-[10px] font-bold"></span>
+        </div>
+        <div class="flex items-center gap-2.5 shrink-0">
+          <button id="openEmailReportBtn" type="button"
+            class="hidden px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            Email Report
+          </button>
+          <button id="openChangePinBtn" type="button"
+            class="text-[11px] text-sky-400 hover:text-sky-300 font-medium underline">
+            Change PIN
+          </button>
+          <span class="text-slate-600">|</span>
+          <button id="logoutBtn" type="button" class="text-[11px] text-rose-400 hover:text-rose-300 font-semibold">
+            Switch / Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Preview Mode Notice (auto-hidden when deployed in Google Apps Script) -->
+  <div id="previewBanner" class="hidden bg-amber-50 border-b border-amber-200">
+    <div class="max-w-2xl mx-auto px-4 py-2 flex items-center justify-between gap-2 text-xs text-amber-900">
+      <span><strong>Preview Mode:</strong> Saves locally here. Deploy with <code>Code.gs</code> in Apps Script to sync
+        live with Google Sheets &amp; Lookup tab.</span>
+      <button id="fillSampleBtn" type="button"
+        class="shrink-0 px-2.5 py-1 rounded-md bg-amber-600 text-white font-semibold hover:bg-amber-700">
+        Fill Sample
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="max-w-2xl mx-auto px-3 sm:px-4 pt-4">
+
+    <!-- ==================== VIEW 1: ENTRY FORM ==================== -->
+    <section id="viewForm" class="space-y-4">
+      <!-- Edit Mode Banner -->
+      <div id="editBanner"
+        class="hidden rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2.5 flex items-center justify-between gap-2">
+        <div class="text-xs text-blue-900">
+          <span class="font-bold" id="editBannerTitle">Editing Entry #1</span>
+          <span class="block text-blue-700">Changes update All Entries and move the monthly tab if Month/Year
+            changes.</span>
+        </div>
+        <button id="cancelEditBtn" type="button"
+          class="px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-xs font-semibold text-blue-800 hover:bg-blue-100">
+          Cancel Edit
+        </button>
+      </div>
+
+      <form id="salesForm" class="space-y-4" novalidate>
+        <input type="hidden" id="responseId" value="" />
+
+        <!-- Card 1: Order Basics -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3.5">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">1. Order Basics</h2>
+            <span id="targetTabBadge" class="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[11px] font-bold">Tab:
+              --</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label for="month" class="block text-xs font-semibold text-slate-700 mb-1">Month *</label>
+              <select id="month" required
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none">
+                <option value="JAN">JAN</option>
+                <option value="FEB">FEB</option>
+                <option value="MAR">MAR</option>
+                <option value="APR">APR</option>
+                <option value="MAY">MAY</option>
+                <option value="JUN">JUN</option>
+                <option value="JUL">JUL</option>
+                <option value="AUG">AUG</option>
+                <option value="SEP">SEP</option>
+                <option value="OCT">OCT</option>
+                <option value="NOV">NOV</option>
+                <option value="DEC">DEC</option>
+              </select>
+            </div>
+            <div>
+              <label for="year" class="block text-xs font-semibold text-slate-700 mb-1">Year *</label>
+              <select id="year" required
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+            </div>
+          </div>
+
+          <!-- Sales Person Field (Role Enforced) -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label for="salesPerson" class="block text-xs font-semibold text-slate-700">Sales Person *</label>
+              <span id="salesPersonRoleBadge" class="text-[10px] font-semibold"></span>
+            </div>
+            <div class="relative">
+              <select id="salesPerson" required
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none">
+                <option value="">Select Sales Person...</option>
+              </select>
+              <div id="salesPersonLockIcon"
+                class="hidden absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+            </div>
+            <p id="salesPersonHelpText" class="mt-1 text-[11px] text-slate-500"></p>
+          </div>
+
+          <div>
+            <label for="partyName" class="block text-xs font-semibold text-slate-700 mb-1">Party Name *</label>
+            <input id="partyName" type="text" required placeholder="Customer / Company name"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Region *</label>
+            <div id="regionPills" class="flex flex-wrap gap-1.5">
+              <button type="button" data-val="Pune"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Pune</button>
+              <button type="button" data-val="Aurangabad"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Aurangabad</button>
+              <button type="button" data-val="Nagpur"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Nagpur</button>
+              <button type="button" data-val="Kolhapur"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Kolhapur</button>
+              <button type="button" data-val="Nashik"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Nashik</button>
+              <button type="button" data-val="__OTHER__"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Other</button>
+            </div>
+            <input id="regionOther" type="text" placeholder="Enter custom region"
+              class="hidden mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+          </div>
+        </div>
+
+        <!-- Card 2: PO, PI & Invoice -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3.5">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">2. PO, PI &amp; Invoice</h2>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="poNo" class="block text-xs font-semibold text-slate-700 mb-1">Po No. *</label>
+              <input id="poNo" type="text" required placeholder="PO # or VERBAL"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+            <div>
+              <label for="poDate" class="block text-xs font-semibold text-slate-700 mb-1">Po Date *</label>
+              <input id="poDate" type="date" required
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="piNo" class="block text-xs font-semibold text-slate-700 mb-1">PI No.</label>
+              <input id="piNo" type="text" placeholder="Optional"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+            <div>
+              <label for="piDate" class="block text-xs font-semibold text-slate-700 mb-1">PI Date</label>
+              <input id="piDate" type="date"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="invoiceNo" class="block text-xs font-semibold text-slate-700 mb-1">Invoice No.</label>
+              <input id="invoiceNo" type="text" placeholder="Optional"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+            <div>
+              <label for="invoiceDate" class="block text-xs font-semibold text-slate-700 mb-1">Invoice Date</label>
+              <input id="invoiceDate" type="date"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Product & Values -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3.5">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">3. Product &amp; Pricing (₹)</h2>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="productKeyword" class="block text-xs font-semibold text-slate-700 mb-1">Product Keyword
+                *</label>
+              <select id="productKeyword" required
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none">
+                <option value="">Select...</option>
+                <option value="LS">LS — Leadshine</option>
+                <option value="BC">BC — Bochu</option>
+                <option value="RP">RP — Rack/Pinion</option>
+                <option value="LM">LM — LM Rail/Block</option>
+                <option value="GB">GB — Gearbox</option>
+                <option value="DC">DC — Dairuike Chuck</option>
+                <option value="SP">SP — Spindle/Bracket</option>
+                <option value="VF">VF — VFD</option>
+                <option value="KK">KK — KK Robot</option>
+                <option value="SN">SN — Ball Screw/Nut</option>
+                <option value="OT">OT — Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="productName" class="block text-xs font-semibold text-slate-700 mb-1">Product Name</label>
+              <input id="productName" type="text" placeholder="Model / specification"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2.5">
+            <div>
+              <label for="poValue" class="block text-xs font-semibold text-slate-700 mb-1">PO Value *</label>
+              <input id="poValue" type="number" inputmode="decimal" step="0.01" min="0" required placeholder="0"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+            <div>
+              <label for="productValue" class="block text-xs font-semibold text-slate-700 mb-1">Product Val *</label>
+              <input id="productValue" type="number" inputmode="decimal" step="0.01" min="0" required placeholder="0"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+            <div>
+              <label for="freightCharges" class="block text-xs font-semibold text-slate-700 mb-1">Freight</label>
+              <input id="freightCharges" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+          </div>
+
+          <!-- Live Calculation Box -->
+          <div class="rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-slate-400">GST (18%)</div>
+              <div id="calcGst" class="text-sm font-bold text-slate-100 mt-0.5">₹0.00</div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-slate-400">Total Value</div>
+              <div id="calcTotal" class="text-sm font-bold text-emerald-400 mt-0.5">₹0.00</div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-slate-400">Comm % Val</div>
+              <div id="calcCommPct" class="text-sm font-bold text-slate-100 mt-0.5">₹0.00</div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-wider text-slate-400">Total Comm</div>
+              <div id="calcCommTotal" class="text-sm font-bold text-sky-400 mt-0.5">₹0.00</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: Commission, Payment & Billing -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3.5">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">4. Commission &amp; Payment</h2>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Commission Type *</label>
+              <div id="commTypePills" class="grid grid-cols-3 gap-1.5">
+                <button type="button" data-val="P"
+                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">P</button>
+                <button type="button" data-val="P + F"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">P
+                  + F</button>
+                <button type="button" data-val="F"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">F</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">WB / Billing *</label>
+              <div id="wbPills" class="grid grid-cols-2 gap-1.5">
+                <button type="button" data-val="B"
+                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">B
+                  (Billing)</button>
+                <button type="button" data-val="WB"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">WB</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Commission %</label>
+              <div id="commPctPills" class="grid grid-cols-4 gap-1.5">
+                <button type="button" data-val="5"
+                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">5%</button>
+                <button type="button" data-val="2.5"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">2.5%</button>
+                <button type="button" data-val="0"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">0%</button>
+                <button type="button" data-val="__OTHER__"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Other</button>
+              </div>
+              <input id="commPctOther" type="number" inputmode="decimal" step="0.1" min="0"
+                placeholder="Custom % (e.g. 3.5)"
+                class="hidden mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+
+            <div>
+              <label for="commissionFixed" class="block text-xs font-semibold text-slate-700 mb-1.5">Commission Fixed
+                (₹)</label>
+              <input id="commissionFixed" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Payment Terms</label>
+              <div id="termsPills" class="grid grid-cols-4 gap-1.5">
+                <button type="button" data-val="PI"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">PI</button>
+                <button type="button" data-val="CR"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">CR</button>
+                <button type="button" data-val="PDC"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">PDC</button>
+                <button type="button" data-val="__OTHER__"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Other</button>
+              </div>
+              <input id="termsOther" type="text" placeholder="e.g. 30D Cr, 45D Cr"
+                class="hidden mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Payment Status</label>
+              <div id="statusPills" class="grid grid-cols-2 gap-1.5">
+                <button type="button" data-val=""
+                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Pending</button>
+                <button type="button" data-val="RCD"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">RCD
+                  (Received)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5: Remarks -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500">5. Remarks</h2>
+          <div>
+            <label for="remark" class="block text-xs font-semibold text-slate-700 mb-1">Remark</label>
+            <textarea id="remark" rows="2" placeholder="Sales / order notes"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none"></textarea>
+          </div>
+          <div>
+            <label for="accountsRemark" class="block text-xs font-semibold text-slate-700 mb-1">Accounts Remark</label>
+            <textarea id="accountsRemark" rows="2" placeholder="Payment / billing follow-up notes"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none"></textarea>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="flex gap-2.5 pt-1">
+          <button id="resetFormBtn" type="button"
+            class="px-4 py-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 active:scale-95 transition">
+            Clear
+          </button>
+          <button id="submitBtn" type="submit"
+            class="flex-1 py-3.5 rounded-xl bg-blue-800 hover:bg-blue-900 text-white text-sm font-bold shadow-md active:scale-[0.99] transition flex items-center justify-center gap-2">
+            <span id="submitBtnText">Save Sales Entry</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ==================== VIEW 2: LAST 10 TRANSACTIONS ==================== -->
+    <section id="viewRecent" class="hidden space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Last 10 Transactions</h2>
+          <p id="recentSubtitle" class="text-xs text-slate-500">Tap edit on your entries to update</p>
+        </div>
+        <span id="recentCountBadge" class="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-bold">0
+          total</span>
+      </div>
+
+      <input id="recentSearch" type="search" placeholder="Filter by party, month-year, PO #, rep, product..."
+        class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-600 focus:outline-none" />
+
+      <div id="recentList" class="space-y-2.5"></div>
+    </section>
+
+    <!-- ==================== VIEW 3: MONTHLY DASHBOARD ==================== -->
+    <section id="viewDashboard" class="hidden space-y-4">
+      <!-- Financial Year & Month Filters -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Monthly Dashboard</span>
+          <div class="flex items-center gap-2">
+            <label for="dashFySelect" class="sr-only">Financial Year</label>
+            <select id="dashFySelect"
+              class="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-bold text-blue-900 focus:border-blue-600 focus:outline-none"></select>
+          </div>
+        </div>
+        <div id="dashMonthPills" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5"></div>
+        <div class="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+          <span>Showing: <strong id="dashActiveMonthLabel" class="text-blue-800">FY 26-27 (All Months)</strong></span>
+          <span id="dashTabsHint">Tabs: APR-2026 to MAR-2027</span>
+        </div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-2 gap-2.5">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
+          <div class="text-[11px] font-semibold text-slate-500">Total Sales (₹)</div>
+          <div id="kpiSales" class="text-lg font-bold text-slate-900 mt-1">₹0</div>
+          <div id="kpiEntries" class="text-[11px] text-slate-500 mt-0.5">0 entries</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
+          <div class="text-[11px] font-semibold text-slate-500">Total Commission (₹)</div>
+          <div id="kpiComm" class="text-lg font-bold text-sky-700 mt-1">₹0</div>
+          <div id="kpiProductVal" class="text-[11px] text-slate-500 mt-0.5">Product: ₹0</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
+          <div class="text-[11px] font-semibold text-slate-500">Payment Pending (₹)</div>
+          <div id="kpiPendingAmt" class="text-lg font-bold text-rose-600 mt-1">₹0</div>
+          <div id="kpiPendingCnt" class="text-[11px] text-slate-500 mt-0.5">0 pending orders</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
+          <div class="text-[11px] font-semibold text-slate-500">Collected (RCD)</div>
+          <div id="kpiCollectedAmt" class="text-lg font-bold text-emerald-600 mt-1">₹0</div>
+          <div id="kpiGstAmt" class="text-[11px] text-slate-500 mt-0.5">GST: ₹0</div>
+        </div>
+      </div>
+
+      <!-- Monthly Sales Chart -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <h3 id="chartTitle" class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Monthly Sales (Total
+          Value ₹)</h3>
+        <div class="relative h-56">
+          <canvas id="monthlyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- By Sales Person Breakdown -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">By Sales Person</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead>
+              <tr class="border-b border-slate-200 text-slate-500">
+                <th class="py-2 pr-2 font-semibold">Rep</th>
+                <th class="py-2 px-2 font-semibold text-right">Orders</th>
+                <th class="py-2 px-2 font-semibold text-right">Total ₹</th>
+                <th class="py-2 px-2 font-semibold text-right">Comm ₹</th>
+                <th class="py-2 pl-2 font-semibold text-right">Pending ₹</th>
+              </tr>
+            </thead>
+            <tbody id="salesPersonTable" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Bottom Navigation Bar -->
+  <nav
+    class="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 shadow-[0_-2px_10px_rgba(15,23,42,0.06)]">
+    <div class="max-w-2xl mx-auto grid grid-cols-3">
+      <button type="button" data-tab="form"
+        class="nav-btn py-2.5 flex flex-col items-center justify-center gap-0.5 text-blue-800 font-bold">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+        <span class="text-[11px]">New Entry</span>
+      </button>
+      <button type="button" data-tab="recent"
+        class="nav-btn py-2.5 flex flex-col items-center justify-center gap-0.5 text-slate-500 font-medium">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
+        <span class="text-[11px]">Last 10</span>
+      </button>
+      <button type="button" data-tab="dashboard"
+        class="nav-btn py-2.5 flex flex-col items-center justify-center gap-0.5 text-slate-500 font-medium">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        <span class="text-[11px]">Dashboard</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ==================== PIN LOGIN MODAL ==================== -->
+  <div id="loginModal"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 overflow-y-auto">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 text-center space-y-4">
+      <div
+        class="mx-auto w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-800 shadow-inner">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+
+      <div>
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight">RK Sales Login</h2>
+        <p class="text-xs text-slate-500 mt-1">Select your profile and enter your PIN</p>
+      </div>
+
+      <!-- User Selector -->
+      <div class="text-left">
+        <label for="loginUserSelect" class="block text-xs font-semibold text-slate-700 mb-1">Select Profile *</label>
+        <select id="loginUserSelect"
+          class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none">
+          <option value="">Choose User...</option>
+        </select>
+      </div>
+
+      <!-- PIN Display Dots -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-2">Enter PIN</label>
+        <div id="pinDotsContainer" class="flex justify-center items-center gap-3 py-1 cursor-pointer">
+          <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300 bg-white transition-all duration-150">
+          </div>
+          <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300 bg-white transition-all duration-150">
+          </div>
+          <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300 bg-white transition-all duration-150">
+          </div>
+          <div class="pin-dot w-4 h-4 rounded-full border-2 border-slate-300 bg-white transition-all duration-150">
+          </div>
+        </div>
+        <input id="pinHiddenInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" class="sr-only"
+          autocomplete="current-password" />
+      </div>
+
+      <!-- Error Message -->
+      <div id="loginError"
+        class="hidden p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 text-center">
+      </div>
+
+      <!-- Numeric Keypad -->
+      <div class="grid grid-cols-3 gap-2 pt-1 max-w-[260px] mx-auto select-none">
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="1">1</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="2">2</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="3">3</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="4">4</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="5">5</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="6">6</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="7">7</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="8">8</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="9">9</button>
+        <button type="button" id="keypadClear"
+          class="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-xs font-bold text-slate-600 transition shadow-sm active:scale-95">Clear</button>
+        <button type="button"
+          class="keypad-btn py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-800 transition shadow-sm active:scale-95"
+          data-num="0">0</button>
+        <button type="button" id="keypadBackspace"
+          class="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-lg font-bold text-slate-600 transition shadow-sm active:scale-95 flex items-center justify-center">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6-7h12a2 2 0 012 2v10a2 2 0 01-2 2H9l-6-7z" />
+          </svg>
+        </button>
+      </div>
+
+      <button id="loginSubmitBtn" type="button"
+        class="w-full py-3.5 rounded-xl bg-blue-800 hover:bg-blue-900 active:scale-[0.99] text-white text-sm font-bold shadow-md transition">
+        Unlock &amp; Sign In
+      </button>
+
+      <!-- Demo shortcuts in preview mode -->
+      <div id="demoCredentialsBox" class="pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+        <span class="font-semibold block mb-1">Quick Demo Login:</span>
+        <div class="flex flex-wrap gap-1 justify-center">
+          <button type="button"
+            class="demo-login-chip px-2 py-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-medium"
+            data-code="RK" data-pin="1234">RK (Admin: 1234)</button>
+          <button type="button"
+            class="demo-login-chip px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-medium"
+            data-code="TK" data-pin="1111">TK (Sales: 1111)</button>
+          <button type="button"
+            class="demo-login-chip px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-medium"
+            data-code="SC" data-pin="2222">SC (Sales: 2222)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CHANGE PIN MODAL ==================== -->
+  <div id="changePinModal"
+    class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 overflow-y-auto">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 text-left space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900">Change PIN</h3>
+        <button id="closeChangePinBtn" type="button"
+          class="text-slate-400 hover:text-slate-600 text-sm font-bold p-1">✕</button>
+      </div>
+
+      <div id="changePinAdminUserGroup" class="hidden">
+        <label for="changePinTargetUser" class="block text-xs font-semibold text-slate-700 mb-1">Target User</label>
+        <select id="changePinTargetUser"
+          class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold"></select>
+      </div>
+
+      <div id="currentPinGroup">
+        <label for="currentPinInput" class="block text-xs font-semibold text-slate-700 mb-1">Current PIN *</label>
+        <input id="currentPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="Current PIN"
+          class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+      </div>
+
+      <div>
+        <label for="newPinInput" class="block text-xs font-semibold text-slate-700 mb-1">New PIN (4–8 digits) *</label>
+        <input id="newPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="New PIN"
+          class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+      </div>
+
+      <div>
+        <label for="confirmPinInput" class="block text-xs font-semibold text-slate-700 mb-1">Confirm New PIN *</label>
+        <input id="confirmPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="Re-enter new PIN"
+          class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+      </div>
+
+      <div id="changePinError"
+        class="hidden p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 text-center">
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button id="cancelChangePinBtn" type="button"
+          class="w-1/3 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button id="saveNewPinBtn" type="button"
+          class="w-2/3 py-2.5 rounded-xl bg-blue-800 hover:bg-blue-900 text-xs font-bold text-white shadow-sm">Update
+          PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== EMAIL REPORT MODAL (ADMIN ONLY) ==================== -->
+  <div id="emailReportModal"
+    class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 overflow-y-auto">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 text-left space-y-4 my-auto">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Send Email Report</h3>
+        </div>
+        <button id="closeEmailReportBtn" type="button"
+          class="text-slate-400 hover:text-slate-600 text-sm font-bold p-1">✕</button>
+      </div>
+
+      <!-- Period Type Selector -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1.5">Period Type</label>
+        <div id="emailPeriodPills" class="grid grid-cols-4 gap-1.5">
+          <button type="button" data-val="MONTH"
+            class="pill-btn active py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Month</button>
+          <button type="button" data-val="QUARTER"
+            class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Quarter</button>
+          <button type="button" data-val="FY"
+            class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Annual FY</button>
+          <button type="button" data-val="ALL"
+            class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">All Time</button>
+        </div>
+      </div>
+
+      <!-- Dynamic Period Selectors -->
+      <div id="emailMonthGroup" class="grid grid-cols-2 gap-2.5">
+        <div>
+          <label for="emailMonthSelect" class="block text-xs font-semibold text-slate-700 mb-1">Month</label>
+          <select id="emailMonthSelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+        </div>
+        <div>
+          <label for="emailYearSelect" class="block text-xs font-semibold text-slate-700 mb-1">Year</label>
+          <select id="emailYearSelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+        </div>
+      </div>
+
+      <div id="emailQuarterGroup" class="hidden grid grid-cols-2 gap-2.5">
+        <div>
+          <label for="emailQuarterSelect" class="block text-xs font-semibold text-slate-700 mb-1">Quarter</label>
+          <select id="emailQuarterSelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none">
+            <option value="Q1">Q1 (APR - JUN)</option>
+            <option value="Q2">Q2 (JUL - SEP)</option>
+            <option value="Q3">Q3 (OCT - DEC)</option>
+            <option value="Q4">Q4 (JAN - MAR)</option>
+          </select>
+        </div>
+        <div>
+          <label for="emailQuarterFySelect" class="block text-xs font-semibold text-slate-700 mb-1">Financial Year</label>
+          <select id="emailQuarterFySelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+        </div>
+      </div>
+
+      <div id="emailFyGroup" class="hidden">
+        <label for="emailFySelect" class="block text-xs font-semibold text-slate-700 mb-1">Financial Year</label>
+        <select id="emailFySelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+      </div>
+
+      <!-- Entity Filters -->
+      <div class="border-t border-slate-100 pt-3 space-y-2.5">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Optional Filters</div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <label for="emailPartySelect" class="block text-[11px] font-semibold text-slate-700 mb-1">Party / Client</label>
+            <select id="emailPartySelect" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
+              <option value="">All Parties</option>
+            </select>
+          </div>
+          <div>
+            <label for="emailProductSelect" class="block text-[11px] font-semibold text-slate-700 mb-1">Product</label>
+            <select id="emailProductSelect" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
+              <option value="">All Products</option>
+              <option value="LS">LS — Leadshine</option>
+              <option value="BC">BC — Bochu</option>
+              <option value="RP">RP — Rack/Pinion</option>
+              <option value="LM">LM — LM Rail/Block</option>
+              <option value="GB">GB — Gearbox</option>
+              <option value="DC">DC — Dairuike Chuck</option>
+              <option value="SP">SP — Spindle/Bracket</option>
+              <option value="VF">VF — VFD</option>
+              <option value="KK">KK — KK Robot</option>
+              <option value="SN">SN — Ball Screw/Nut</option>
+              <option value="OT">OT — Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="emailRepSelect" class="block text-[11px] font-semibold text-slate-700 mb-1">Sales Person</label>
+            <select id="emailRepSelect" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
+              <option value="">All Reps</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recipient Email -->
+      <div>
+        <label for="emailToInput" class="block text-xs font-semibold text-slate-700 mb-1">Recipient Email(s)</label>
+        <input id="emailToInput" type="text" placeholder="admin@example.com (comma separated)"
+          class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:border-blue-600 focus:outline-none" />
+        <p class="text-[10px] text-slate-400 mt-0.5">Leave blank to use active Admin emails from Lookup sheet.</p>
+      </div>
+
+      <!-- Live Summary Preview Box -->
+      <div id="emailPreviewBox" class="rounded-xl bg-slate-900 text-white p-3 space-y-1.5">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Report Summary Preview</div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left">
+          <div>
+            <div class="text-[10px] text-slate-400">Orders</div>
+            <div id="emailPreviewOrders" class="text-sm font-bold text-white">0</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400">Total Sales</div>
+            <div id="emailPreviewSales" class="text-sm font-bold text-emerald-400">₹0</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400">Commission</div>
+            <div id="emailPreviewComm" class="text-sm font-bold text-sky-400">₹0</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400">Pending</div>
+            <div id="emailPreviewPending" class="text-sm font-bold text-rose-400">₹0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error / Status Message -->
+      <div id="emailReportMsg" class="hidden p-2.5 rounded-xl text-xs font-semibold text-center"></div>
+
+      <!-- Action Buttons -->
+      <div class="flex gap-2 pt-1">
+        <button id="cancelEmailReportBtn" type="button"
+          class="w-1/3 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button id="sendEmailReportBtn" type="button"
+          class="w-2/3 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white shadow-md flex items-center justify-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          <span id="sendEmailReportBtnText">Send Email Report</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast"
+    class="fixed top-16 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold text-white bg-slate-900 max-w-sm text-center">
+  </div>
+
+  <script id="gasBoot" type="application/json"><?!= bootJson_(editId) ?></script>
+  <script>
+    (function () {
+      var FY_MONTHS = ['APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JAN', 'FEB', 'MAR'];
+      var CAL_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      var DEFAULT_SALES_PERSONS = [
+        { code: 'RK', name: 'Rahul Kodag', active: true, pin: '1234', role: 'ADMIN' },
+        { code: 'TK', name: 'Trupti Kodag', active: true, pin: '1111', role: 'SALES' },
+        { code: 'SC', name: 'Swapnil Chikhale', active: true, pin: '2222', role: 'SALES' },
+        { code: 'OT', name: 'Other', active: true, pin: '3333', role: 'SALES' },
+        { code: 'ADMIN', name: 'Administrator', active: true, pin: '9999', role: 'ADMIN' }
+      ];
+      var IS_LIVE_GAS = (typeof google !== 'undefined' && google.script && google.script.run);
+      var STORAGE_KEY = 'rk_sales_multiyear_preview_v2';
+      var SESSION_USER_KEY = 'rk_sales_auth_session_v3';
+      var PREVIEW_USERS_KEY = 'rk_sales_preview_users_v3';
+      var OFFLINE_AUTH_KEY = 'rk_sales_offline_auth_v1';
+      var PENDING_QUEUE_KEY = 'rk_sales_pending_sync_v1';
+      var deferredInstallPrompt = null;
+      var INITIAL_EDIT_ID = '';
+      var initialEditOpened = false;
+
+      try {
+        var bootEl = document.getElementById('gasBoot');
+        var boot = JSON.parse(bootEl ? bootEl.textContent : '{}');
+        if (boot && boot.editId) INITIAL_EDIT_ID = String(boot.editId);
+      } catch (bootErr) { }
+      if (!INITIAL_EDIT_ID) {
+        try { INITIAL_EDIT_ID = new URLSearchParams(window.location.search).get('edit') || ''; } catch (urlErr) { }
+      }
+
+      function getCurrentFY() {
+        var now = new Date();
+        var y = now.getFullYear();
+        var m = now.getMonth();
+        var startY = (m >= 3) ? y : (y - 1);
+        return 'FY ' + String(startY).slice(-2) + '-' + String(startY + 1).slice(-2);
+      }
+
+      function fyStartYear(fyStr) {
+        var m = String(fyStr || '').match(/FY\s*(\d{2})-(\d{2})/);
+        return m ? (2000 + Number(m[1])) : new Date().getFullYear();
+      }
+
+      function getMonthYearForFY(fyStr, mo) {
+        var sy = fyStartYear(fyStr);
+        var yr = (mo === 'JAN' || mo === 'FEB' || mo === 'MAR') ? (sy + 1) : sy;
+        return mo + '-' + yr;
+      }
+
+      function getFYFromMonthYear(mo, yr) {
+        var y = Number(yr);
+        if (!y) return getCurrentFY();
+        var startY = (mo === 'JAN' || mo === 'FEB' || mo === 'MAR') ? (y - 1) : y;
+        return 'FY ' + String(startY).slice(-2) + '-' + String(startY + 1).slice(-2);
+      }
+
+      var state = {
+        currentUser: null, // { code, name, role, pin }
+        enteredPin: '',
+        activeTab: 'form',
+        dashFY: getCurrentFY(),
+        dashMonth: 'ALL',
+        salesPersons: DEFAULT_SALES_PERSONS.slice(),
+        allEntries: [],
+        last10: [],
+        sheetUrl: 'https://docs.google.com/spreadsheets/d/12WViovDOoOFiu7vQDTY2SiqTaKw5aiF4F46PPN7Xesk/edit',
+        selectedRegion: 'Pune',
+        selectedCommType: 'P',
+        selectedCommPct: '5',
+        selectedTerms: 'PI',
+        selectedStatus: '',
+        selectedWB: 'B',
+        emailReportPeriodType: 'MONTH',
+        chartInstance: null
+      };
+
+      // ---------- HELPERS ----------
+      function $(id) { return document.getElementById(id); }
+
+      function toNum(v) {
+        var n = parseFloat(String(v === null || v === undefined ? '' : v).replace(/,/g, ''));
+        return isNaN(n) ? 0 : n;
+      }
+
+      function fmtINR(n) {
+        return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function fmtINRCompact(n) {
+        return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+      }
+
+      function todayIso() {
+        var d = new Date();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        return d.getFullYear() + '-' + m + '-' + day;
+      }
+
+      function currentCalMonth() {
+        return CAL_MONTHS[new Date().getMonth()] || 'NOV';
+      }
+
+      function currentYear() {
+        return String(new Date().getFullYear());
+      }
+
+      function escapeHtml(s) {
+        return String(s === null || s === undefined ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function populateYearOptions() {
+        var sel = $('year');
+        var curY = new Date().getFullYear();
+        var opts = [];
+        for (var y = curY - 2; y <= curY + 10; y++) {
+          opts.push('<option value="' + y + '">' + y + '</option>');
+        }
+        sel.innerHTML = opts.join('');
+        sel.value = String(curY);
+      }
+
+      // ---------- AUTHENTICATION & PIN LOGIN ----------
+      function loadSavedSession() {
+        try {
+          var raw = localStorage.getItem(SESSION_USER_KEY);
+          if (raw) {
+            var u = JSON.parse(raw);
+            if (u && u.code && u.pin) return u;
+          }
+        } catch (e) { }
+        return null;
+      }
+
+      function saveSession(u) {
+        try {
+          if (u) localStorage.setItem(SESSION_USER_KEY, JSON.stringify(u));
+          else localStorage.removeItem(SESSION_USER_KEY);
+        } catch (e) { }
+      }
+
+      function updatePinDots() {
+        var dots = document.querySelectorAll('.pin-dot');
+        var len = state.enteredPin.length;
+        dots.forEach(function (d, i) {
+          if (i < len) d.classList.add('filled');
+          else d.classList.remove('filled');
+        });
+        $('pinHiddenInput').value = state.enteredPin;
+      }
+
+      function clearPin() {
+        state.enteredPin = '';
+        updatePinDots();
+        $('loginError').classList.add('hidden');
+      }
+
+      function populateLoginUserSelect() {
+        var sel = $('loginUserSelect');
+        var activeList = state.salesPersons.filter(function (sp) { return sp.active !== false; });
+        var html = '<option value="">Choose User...</option>';
+        activeList.forEach(function (sp) {
+          var roleTag = (sp.role === 'ADMIN') ? ' (Admin)' : ' (Sales)';
+          var label = (sp.name && sp.name !== sp.code ? (sp.code + ' — ' + sp.name) : sp.code) + roleTag;
+          html += '<option value="' + escapeHtml(sp.code) + '">' + escapeHtml(label) + '</option>';
+        });
+        sel.innerHTML = html;
+
+        var lastUsed = (state.currentUser && state.currentUser.code) || '';
+        if (!lastUsed) {
+          try { lastUsed = localStorage.getItem('rk_sales_last_user_code') || ''; } catch (e) { }
+        }
+        if (lastUsed && activeList.some(function (x) { return x.code === lastUsed; })) {
+          sel.value = lastUsed;
+        }
+      }
+
+      function showLoginModal() {
+        populateLoginUserSelect();
+        clearPin();
+        $('loginModal').classList.remove('hidden');
+      }
+
+      function hideLoginModal() {
+        $('loginModal').classList.add('hidden');
+        clearPin();
+      }
+
+      function cacheOfflineCredential(userObj) {
+        try {
+          var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+          var users = raw ? JSON.parse(raw) : [];
+          if (!Array.isArray(users)) users = [];
+          users = users.filter(function (u) { return u.code !== userObj.code; });
+          users.push({
+            code: userObj.code,
+            name: userObj.name,
+            role: userObj.role,
+            pin: userObj.pin
+          });
+          localStorage.setItem(OFFLINE_AUTH_KEY, JSON.stringify(users));
+        } catch (e) { }
+      }
+
+      function localLogin(code, pin, btn) {
+        var cached = [];
+        try {
+          var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+          cached = raw ? JSON.parse(raw) : [];
+          if (!Array.isArray(cached)) cached = [];
+        } catch (e) { cached = []; }
+        var found = cached.find(function (u) {
+          return String(u.code).toUpperCase() === String(code).toUpperCase();
+        });
+        if (!found) {
+          found = state.salesPersons.find(function (u) {
+            return String(u.code).toUpperCase() === String(code).toUpperCase();
+          });
+        }
+        btn.disabled = false;
+        btn.textContent = 'Unlock & Sign In';
+        if (!found) {
+          $('loginError').textContent = 'User "' + code + '" is not available for offline login. Sign in once while online.';
+          $('loginError').classList.remove('hidden');
+          clearPin();
+          return;
+        }
+        if (found.active === false) {
+          $('loginError').textContent = 'Account is deactivated.';
+          $('loginError').classList.remove('hidden');
+          clearPin();
+          return;
+        }
+        if (String(found.pin || '').trim() !== String(pin).trim()) {
+          $('loginError').textContent = 'Incorrect PIN.';
+          $('loginError').classList.remove('hidden');
+          clearPin();
+          return;
+        }
+        var userObj = {
+          code: found.code,
+          name: found.name,
+          role: found.role || 'SALES',
+          pin: pin
+        };
+        setAuthenticatedUser(userObj);
+        hideLoginModal();
+        showToast('Offline login: welcome, ' + userObj.name + '!');
+      }
+
+      function executeLogin(code, pin) {
+        if (!code) {
+          $('loginError').textContent = 'Please select your user profile.';
+          $('loginError').classList.remove('hidden');
+          return;
+        }
+        if (!pin || pin.length < 4) {
+          $('loginError').textContent = 'Please enter a 4-digit PIN.';
+          $('loginError').classList.remove('hidden');
+          return;
+        }
+
+        $('loginError').classList.add('hidden');
+        var btn = $('loginSubmitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+
+        if (IS_LIVE_GAS && navigator.onLine !== false) {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              btn.disabled = false;
+              btn.textContent = 'Unlock & Sign In';
+              if (res && res.ok && res.user) {
+                var userObj = {
+                  code: res.user.code,
+                  name: res.user.name,
+                  role: res.user.role || 'SALES',
+                  pin: pin
+                };
+                cacheOfflineCredential(userObj);
+                setAuthenticatedUser(userObj);
+                hideLoginModal();
+                showToast('Welcome, ' + userObj.name + '! (' + userObj.role + ')');
+              } else {
+                $('loginError').textContent = (res && res.message) ? res.message : 'Invalid PIN.';
+                $('loginError').classList.remove('hidden');
+                clearPin();
+              }
+            })
+            .withFailureHandler(function (err) {
+              // Apps Script can be unreachable while navigator.onLine is
+              // still true. Fall back to the last credential cached online.
+              localLogin(code, pin, btn);
+            })
+            .loginUser(code, pin);
+        } else {
+          // Offline/Preview Mode local login.
+          setTimeout(function () { localLogin(code, pin, btn); }, 150);
+        }
+      }
+
+      function setAuthenticatedUser(userObj) {
+        state.currentUser = userObj;
+        saveSession(userObj);
+        try { localStorage.setItem('rk_sales_last_user_code', userObj.code); } catch (e) { }
+
+        // Update Header UI
+        var isAdm = (userObj.role === 'ADMIN');
+        var roleBadge = $('headerRoleBadge');
+        roleBadge.textContent = userObj.role;
+        roleBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ' +
+          (isAdm ? 'bg-amber-400 text-amber-950 border border-amber-300' : 'bg-indigo-500 text-white');
+        roleBadge.classList.remove('hidden');
+
+        $('barUserName').textContent = userObj.name + ' (' + userObj.code + ')';
+        var barRole = $('barUserRole');
+        barRole.textContent = userObj.role;
+        barRole.className = 'px-1.5 py-0.2 rounded text-[10px] font-bold ' +
+          (isAdm ? 'bg-amber-400 text-amber-950' : 'bg-indigo-500 text-white');
+        $('activeUserBar').classList.remove('hidden');
+
+        if (isAdm) {
+          $('openEmailReportBtn').classList.remove('hidden');
+        } else {
+          $('openEmailReportBtn').classList.add('hidden');
+        }
+
+        // Refresh Sales Person field configuration for current role
+        populateSalesPersonOptions();
+        updateSalesPersonFieldForRole();
+
+        // Check if there was an edit query parameter waiting for authentication
+        maybeOpenInitialEdit();
+      }
+
+      function logoutUser() {
+        state.currentUser = null;
+        saveSession(null);
+        $('headerRoleBadge').classList.add('hidden');
+        $('activeUserBar').classList.add('hidden');
+        $('openEmailReportBtn').classList.add('hidden');
+        showLoginModal();
+        showToast('Logged out successfully.');
+      }
+
+      // ---------- SALES PERSON FIELD ROLE ENFORCEMENT ----------
+      function updateSalesPersonFieldForRole() {
+        var sel = $('salesPerson');
+        var badge = $('salesPersonRoleBadge');
+        var help = $('salesPersonHelpText');
+        var lockIcon = $('salesPersonLockIcon');
+
+        if (!state.currentUser) {
+          sel.disabled = true;
+          lockIcon.classList.remove('hidden');
+          badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-700">Please Sign In</span>';
+          help.textContent = 'Sign in to record sales.';
+          return;
+        }
+
+        if (state.currentUser.role === 'ADMIN') {
+          // ADMIN: Can select and assign ANY salesperson!
+          sel.disabled = false;
+          sel.className = 'w-full rounded-xl border border-blue-400 bg-blue-50/40 px-3 py-2.5 text-sm font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none';
+          lockIcon.classList.add('hidden');
+          badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">Admin Mode • Any Rep Selectable</span>';
+          help.textContent = 'Admin role: You can set or reassign any sales person for this entry.';
+        } else {
+          // REGULAR SALES PERSON: Locked to their own account!
+          sel.value = state.currentUser.code;
+          sel.disabled = true;
+          sel.className = 'w-full rounded-xl border border-slate-300 bg-slate-100 cursor-not-allowed px-3 py-2.5 text-sm font-semibold text-slate-700';
+          lockIcon.classList.remove('hidden');
+          badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">Locked • ' + escapeHtml(state.currentUser.code) + '</span>';
+          help.textContent = 'Locked to ' + state.currentUser.name + ' (' + state.currentUser.code + '). Only Admin can reassign entries.';
+        }
+      }
+
+      function populateSalesPersonOptions(ensureCode) {
+        var sel = $('salesPerson');
+        var prevVal = ensureCode !== undefined ? ensureCode : sel.value;
+        var activeList = state.salesPersons.filter(function (sp) { return sp.active !== false; });
+        var html = '<option value="">Select Sales Person...</option>';
+        var hasPrev = false;
+
+        activeList.forEach(function (sp) {
+          if (sp.code === prevVal) hasPrev = true;
+          var roleTag = (sp.role === 'ADMIN') ? ' [Admin]' : '';
+          var label = (sp.name && sp.name !== sp.code ? (sp.code + ' — ' + sp.name) : sp.code) + roleTag;
+          html += '<option value="' + escapeHtml(sp.code) + '">' + escapeHtml(label) + '</option>';
+        });
+
+        // If editing an older entry whose rep is now inactive, still keep it selectable
+        if (prevVal && !hasPrev) {
+          var inactive = state.salesPersons.find(function (sp) { return sp.code === prevVal; });
+          var extraLabel = inactive ? (inactive.code + ' — ' + inactive.name + ' (Inactive)') : prevVal;
+          html += '<option value="' + escapeHtml(prevVal) + '">' + escapeHtml(extraLabel) + '</option>';
+        }
+
+        sel.innerHTML = html;
+
+        if (state.currentUser && state.currentUser.role !== 'ADMIN') {
+          sel.value = state.currentUser.code;
+        } else {
+          sel.value = prevVal || (state.currentUser ? state.currentUser.code : '');
+        }
+      }
+
+      function updateTargetTabBadge() {
+        var mo = $('month').value || currentCalMonth();
+        var yr = $('year').value || currentYear();
+        $('targetTabBadge').textContent = 'Tab: ' + mo + '-' + yr;
+      }
+
+      function populateDashFYOptions() {
+        var curStart = fyStartYear(getCurrentFY());
+        var fySet = {};
+        for (var y = curStart - 1; y <= curStart + 5; y++) {
+          fySet['FY ' + String(y).slice(-2) + '-' + String(y + 1).slice(-2)] = true;
+        }
+        state.allEntries.forEach(function (e) {
+          if (e.month && e.year) fySet[getFYFromMonthYear(e.month, e.year)] = true;
+        });
+        var fys = Object.keys(fySet).sort();
+        var sel = $('dashFySelect');
+        sel.innerHTML = '<option value="ALL">All Years</option>' + fys.map(function (fy) {
+          return '<option value="' + fy + '"' + (state.dashFY === fy ? ' selected' : '') + '>' + fy + '</option>';
+        }).join('');
+        sel.value = state.dashFY;
+      }
+
+      var toastTimer = null;
+      function showToast(msg, isError) {
+        var el = $('toast');
+        el.textContent = msg;
+        el.className = 'fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold text-white max-w-sm text-center ' +
+          (isError ? 'bg-rose-600' : 'bg-emerald-700');
+        el.classList.remove('hidden');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { el.classList.add('hidden'); }, 3400);
+      }
+
+      // ---------- PILL GROUP CONTROLLER ----------
+      function setupPillGroup(containerId, stateKey, otherInputId, onChange) {
+        var box = $(containerId);
+        box.addEventListener('click', function (e) {
+          var btn = e.target.closest('button[data-val]');
+          if (!btn) return;
+          var val = btn.getAttribute('data-val');
+          state[stateKey] = val;
+          var allBtns = box.querySelectorAll('button[data-val]');
+          allBtns.forEach(function (b) {
+            b.classList.toggle('active', b === btn);
+          });
+          if (otherInputId) {
+            var otherEl = $(otherInputId);
+            if (val === '__OTHER__') {
+              otherEl.classList.remove('hidden');
+              otherEl.focus();
+            } else {
+              otherEl.classList.add('hidden');
+              otherEl.value = '';
+            }
+          }
+          if (onChange) onChange(val);
+        });
+      }
+
+      function setPillValue(containerId, stateKey, val, otherInputId) {
+        var box = $(containerId);
+        var btns = Array.prototype.slice.call(box.querySelectorAll('button[data-val]'));
+        var match = btns.find(function (b) { return b.getAttribute('data-val') === String(val); });
+        var otherEl = otherInputId ? $(otherInputId) : null;
+
+        if (match) {
+          state[stateKey] = String(val);
+          btns.forEach(function (b) { b.classList.toggle('active', b === match); });
+          if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
+        } else if (otherEl && val !== '' && val !== null && val !== undefined) {
+          var otherBtn = btns.find(function (b) { return b.getAttribute('data-val') === '__OTHER__'; });
+          state[stateKey] = '__OTHER__';
+          btns.forEach(function (b) { b.classList.toggle('active', b === otherBtn); });
+          otherEl.classList.remove('hidden');
+          otherEl.value = val;
+        } else {
+          state[stateKey] = '';
+          btns.forEach(function (b) { b.classList.remove('active'); });
+          if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
+        }
+      }
+
+      // ---------- LIVE CALCULATIONS ----------
+      function getEffectiveCommPct() {
+        return state.selectedCommPct === '__OTHER__' ? toNum($('commPctOther').value) : toNum(state.selectedCommPct);
+      }
+
+      function updateLiveCalc() {
+        var pv = toNum($('productValue').value);
+        var fr = toNum($('freightCharges').value);
+        var gst = (pv + fr) * 0.18;
+        var total = pv + fr + gst;
+        var pct = getEffectiveCommPct() / 100;
+        var commVal = pv * pct;
+        var commFix = toNum($('commissionFixed').value);
+        var totalComm = commVal + commFix;
+
+        $('calcGst').textContent = fmtINR(gst);
+        $('calcTotal').textContent = fmtINR(total);
+        $('calcCommPct').textContent = fmtINR(commVal);
+        $('calcCommTotal').textContent = fmtINR(totalComm);
+      }
+
+      // ---------- NAVIGATION ----------
+      function switchTab(tab) {
+        state.activeTab = tab;
+        $('viewForm').classList.toggle('hidden', tab !== 'form');
+        $('viewRecent').classList.toggle('hidden', tab !== 'recent');
+        $('viewDashboard').classList.toggle('hidden', tab !== 'dashboard');
+
+        document.querySelectorAll('.nav-btn').forEach(function (b) {
+          var isAct = b.getAttribute('data-tab') === tab;
+          b.classList.toggle('text-blue-800', isAct);
+          b.classList.toggle('font-bold', isAct);
+          b.classList.toggle('text-slate-500', !isAct);
+          b.classList.toggle('font-medium', !isAct);
+        });
+
+        if (tab === 'recent') renderRecentList();
+        if (tab === 'dashboard') renderDashboard();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      // ---------- FORM RESET ----------
+      function resetForm(scrollToTop) {
+        $('salesForm').reset();
+        $('responseId').value = '';
+        $('month').value = currentCalMonth();
+        $('year').value = currentYear();
+        $('partyName').value = '';
+        $('poNo').value = '';
+        $('poDate').value = todayIso();
+        $('piNo').value = '';
+        $('piDate').value = '';
+        $('invoiceNo').value = '';
+        $('invoiceDate').value = '';
+        $('productKeyword').value = '';
+        $('productName').value = '';
+        $('poValue').value = '';
+        $('productValue').value = '';
+        $('freightCharges').value = '';
+        $('commissionFixed').value = '';
+        $('remark').value = '';
+        $('accountsRemark').value = '';
+        setPillValue('regionPills', 'selectedRegion', 'Pune', 'regionOther');
+        setPillValue('commTypePills', 'selectedCommType', 'P');
+        setPillValue('commPctPills', 'selectedCommPct', '5', 'commPctOther');
+        setPillValue('termsPills', 'selectedTerms', 'PI', 'termsOther');
+        setPillValue('statusPills', 'selectedStatus', '');
+        setPillValue('wbPills', 'selectedWB', 'B');
+        $('editBanner').classList.add('hidden');
+        $('submitBtnText').textContent = 'Save Sales Entry';
+
+        populateSalesPersonOptions();
+        updateSalesPersonFieldForRole();
+        updateTargetTabBadge();
+        updateLiveCalc();
+        if (scrollToTop) window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function loadEntryForEdit(entry) {
+        if (!state.currentUser) {
+          showLoginModal();
+          showToast('Please sign in first to edit entries.', true);
+          return;
+        }
+
+        // Permission check: Non-admins cannot edit entries of other salespersons!
+        var isAdm = (state.currentUser.role === 'ADMIN');
+        var isOwner = (entry.salesPerson && entry.salesPerson.toUpperCase() === state.currentUser.code.toUpperCase());
+        if (!isAdm && !isOwner) {
+          showToast('Permission denied: You can only edit your own entries (' + state.currentUser.code + '). Contact Admin to edit #' + entry.srNo + '.', true);
+          return;
+        }
+
+        $('responseId').value = entry.responseId || '';
+        $('month').value = entry.month || currentCalMonth();
+        if (entry.year) {
+          if (!$('year').querySelector('option[value="' + entry.year + '"]')) {
+            var opt = document.createElement('option');
+            opt.value = entry.year;
+            opt.textContent = entry.year;
+            $('year').appendChild(opt);
+          }
+          $('year').value = entry.year;
+        }
+
+        populateSalesPersonOptions(entry.salesPerson || '');
+        if (isAdm) {
+          $('salesPerson').disabled = false;
+          $('salesPerson').value = entry.salesPerson || '';
+        } else {
+          $('salesPerson').disabled = true;
+          $('salesPerson').value = state.currentUser.code;
+        }
+        updateSalesPersonFieldForRole();
+
+        $('partyName').value = entry.partyName || '';
+        setPillValue('regionPills', 'selectedRegion', entry.region || 'Pune', 'regionOther');
+        $('poNo').value = entry.poNo || '';
+        $('poDate').value = entry.poDate || '';
+        $('piNo').value = entry.piNo || '';
+        $('piDate').value = entry.piDate || '';
+        $('invoiceNo').value = entry.invoiceNo || '';
+        $('invoiceDate').value = entry.invoiceDate || '';
+        $('productKeyword').value = entry.productKeyword || '';
+        $('productName').value = entry.productName || '';
+        $('poValue').value = entry.poValue || '';
+        $('productValue').value = entry.productValue || '';
+        $('freightCharges').value = entry.freightCharges || '';
+        setPillValue('commTypePills', 'selectedCommType', entry.commissionType || 'P');
+        setPillValue('commPctPills', 'selectedCommPct', String(entry.commissionPct), 'commPctOther');
+        $('commissionFixed').value = entry.commissionFixed || '';
+        setPillValue('termsPills', 'selectedTerms', entry.paymentTerms || '', 'termsOther');
+        setPillValue('statusPills', 'selectedStatus', entry.paymentStatus || '');
+        setPillValue('wbPills', 'selectedWB', entry.wbBilling || 'B');
+        $('remark').value = entry.remark || '';
+        $('accountsRemark').value = entry.accountsRemark || '';
+
+        $('editBannerTitle').textContent = 'Editing Entry #' + entry.srNo + ' (' + entry.partyName + ' • Rep: ' + entry.salesPerson + ')';
+        $('editBanner').classList.remove('hidden');
+        $('submitBtnText').textContent = 'Update Entry #' + entry.srNo;
+        updateTargetTabBadge();
+        updateLiveCalc();
+        switchTab('form');
+      }
+
+      // ---------- DATA SYNC (LIVE GAS OR PREVIEW) ----------
+      function savePreviewStorage() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.allEntries)); } catch (e) { }
+      }
+
+      function loadPreviewStorage() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) return JSON.parse(raw);
+        } catch (e) { }
+        return [];
+      }
+
+      function loadPendingQueue() {
+        try {
+          var raw = localStorage.getItem(PENDING_QUEUE_KEY);
+          var queue = raw ? JSON.parse(raw) : [];
+          return Array.isArray(queue) ? queue : [];
+        } catch (e) { return []; }
+      }
+
+      function savePendingQueue(queue) {
+        try { localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue || [])); } catch (e) { }
+        updateConnectionStatus();
+      }
+
+      function enqueuePendingPayload(payload) {
+        var queue = loadPendingQueue();
+        queue.push({
+          payload: Object.assign({}, payload),
+          queuedAt: new Date().toISOString()
+        });
+        savePendingQueue(queue);
+      }
+
+      function updateConnectionStatus() {
+        var pending = loadPendingQueue().length;
+        var online = navigator.onLine !== false;
+        var label = online ? 'Online' : 'Offline';
+        if (pending) label += ' • ' + pending + ' pending sync';
+        $('modeSubtitle').textContent = IS_LIVE_GAS
+          ? label + ' • Google Sheets'
+          : label + ' • Local Preview';
+        $('refreshBtn').textContent = pending ? 'Sync (' + pending + ')' : (online ? 'Sync' : 'Offline');
+        $('refreshBtn').title = pending
+          ? 'Sync ' + pending + ' pending change' + (pending === 1 ? '' : 's')
+          : 'Sync with Google Sheets';
+      }
+
+      function registerPwa() {
+        if (!('serviceWorker' in navigator)) return;
+        try {
+          var swUrl = new URL(window.location.href);
+          swUrl.search = 'pwa=sw';
+          navigator.serviceWorker.register(swUrl.href).catch(function () { });
+        } catch (e) { }
+      }
+
+      function setupPwaInstallButton() {
+        var btn = $('installPwaBtn');
+        if (!btn) return;
+        var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+        if (standalone || (window.navigator && window.navigator.standalone === true)) {
+          btn.classList.add('hidden');
+          return;
+        }
+        // Keep a visible button even when the browser has not exposed
+        // beforeinstallprompt yet; the click handler gives manual instructions.
+        btn.classList.remove('hidden');
+        window.addEventListener('beforeinstallprompt', function (event) {
+          event.preventDefault();
+          deferredInstallPrompt = event;
+          btn.textContent = 'Install App';
+        });
+        window.addEventListener('appinstalled', function () {
+          deferredInstallPrompt = null;
+          btn.classList.add('hidden');
+          showToast('RK Sales installed successfully');
+        });
+        btn.addEventListener('click', function () {
+          if (!deferredInstallPrompt) {
+            showToast('Use the browser menu → Install RK Sales (open the app online first).', false);
+            return;
+          }
+          deferredInstallPrompt.prompt();
+          deferredInstallPrompt.userChoice.then(function (choice) {
+            if (choice && choice.outcome === 'accepted') btn.classList.add('hidden');
+            deferredInstallPrompt = null;
+          });
+        });
+      }
+
+      function flushPendingQueue(done) {
+        var queue = loadPendingQueue();
+        if (!IS_LIVE_GAS || !navigator.onLine || !queue.length) {
+          updateConnectionStatus();
+          if (done) done();
+          return;
+        }
+        var item = queue[0];
+        $('modeSubtitle').textContent = 'Syncing pending changes (' + queue.length + ')...';
+        google.script.run
+          .withSuccessHandler(function (res) {
+            var remaining = loadPendingQueue();
+            remaining.shift();
+            savePendingQueue(remaining);
+            if (res && res.dashboard) applyDashboardPayload(res.dashboard);
+            flushPendingQueue(done);
+          })
+          .withFailureHandler(function (err) {
+            updateConnectionStatus();
+            showToast('Pending sync paused: ' + (err.message || err), true);
+            if (done) done();
+          })
+          .saveEntry(item.payload);
+      }
+
+      function applyDashboardPayload(data) {
+        if (!data) return;
+        if (Array.isArray(data.salesPersons) && data.salesPersons.length) {
+          state.salesPersons = data.salesPersons;
+          populateLoginUserSelect();
+          populateSalesPersonOptions();
+          updateSalesPersonFieldForRole();
+        }
+        state.allEntries = Array.isArray(data.allEntries) ? data.allEntries : [];
+        state.last10 = Array.isArray(data.last10) ? data.last10 : state.allEntries.slice(0, 10);
+        if (data.sheetUrl) {
+          state.sheetUrl = data.sheetUrl;
+          $('openSheetLink').href = data.sheetUrl;
+        }
+        $('recentCountBadge').textContent = state.allEntries.length + ' total';
+        populateDashFYOptions();
+        if (state.activeTab === 'recent') renderRecentList();
+        if (state.activeTab === 'dashboard') renderDashboard();
+        maybeOpenInitialEdit();
+      }
+
+      function maybeOpenInitialEdit() {
+        if (!INITIAL_EDIT_ID || initialEditOpened || !state.currentUser) return;
+        var found = state.allEntries.find(function (x) { return String(x.responseId) === String(INITIAL_EDIT_ID); });
+        if (found) {
+          initialEditOpened = true;
+          loadEntryForEdit(found);
+        }
+      }
+
+      function syncData(showFeedback) {
+        if (IS_LIVE_GAS && navigator.onLine !== false) {
+          $('modeSubtitle').textContent = 'Syncing with Google Sheets...';
+          google.script.run
+            .withSuccessHandler(function (data) {
+              applyDashboardPayload(data);
+              flushPendingQueue(function () {
+                updateConnectionStatus();
+                if (showFeedback) showToast('Synced with Google Sheets & pending changes');
+              });
+            })
+            .withFailureHandler(function (err) {
+              updateConnectionStatus();
+              showToast('Sync failed: ' + (err.message || err), true);
+            })
+            .getDashboardData();
+        } else {
+          $('previewBanner').classList.remove('hidden');
+          $('modeSubtitle').textContent = 'Interactive Preview Mode (Multi-Year)';
+          var local = loadPreviewStorage();
+          local.sort(function (a, b) { return b.srNo - a.srNo; });
+          applyDashboardPayload({
+            salesPersons: state.salesPersons,
+            allEntries: local,
+            last10: local.slice(0, 10)
+           });
+          updateConnectionStatus();
+          if (showFeedback) showToast(navigator.onLine === false ? 'Offline mode: local data ready' : 'Local state refreshed');
+        }
+      }
+
+      function handleSubmit(e) {
+        e.preventDefault();
+        if (!state.currentUser) {
+          showLoginModal();
+          showToast('Please sign in to submit entries.', true);
+          return;
+        }
+
+        var regionVal = state.selectedRegion === '__OTHER__' ? $('regionOther').value.trim() : state.selectedRegion;
+        var termsVal = state.selectedTerms === '__OTHER__' ? $('termsOther').value.trim() : state.selectedTerms;
+        var mo = $('month').value;
+        var yr = $('year').value;
+        var monthYear = mo + '-' + yr;
+
+        // Sales Person determination: Admin can pick anyone; regular rep is locked to own code
+        var salesPersonVal = (state.currentUser.role === 'ADMIN')
+          ? $('salesPerson').value.trim()
+          : state.currentUser.code;
+
+        if (!mo || !yr || !salesPersonVal || !$('partyName').value.trim() || !regionVal ||
+          !$('poNo').value.trim() || !$('poDate').value || !$('productKeyword').value ||
+          $('poValue').value === '' || $('productValue').value === '' || !state.selectedCommType || !state.selectedWB) {
+          showToast('Please fill all required (*) fields.', true);
+          return;
+        }
+
+        var payload = {
+          authCode: state.currentUser.code,
+          authPin: state.currentUser.pin,
+          responseId: $('responseId').value.trim(),
+          month: mo,
+          year: yr,
+          monthYear: monthYear,
+          salesPerson: salesPersonVal,
+          partyName: $('partyName').value.trim(),
+          region: regionVal,
+          poNo: $('poNo').value.trim(),
+          poDate: $('poDate').value,
+          piNo: $('piNo').value.trim(),
+          piDate: $('piDate').value,
+          invoiceNo: $('invoiceNo').value.trim(),
+          invoiceDate: $('invoiceDate').value,
+          productKeyword: $('productKeyword').value,
+          productName: $('productName').value.trim(),
+          poValue: toNum($('poValue').value),
+          productValue: toNum($('productValue').value),
+          freightCharges: toNum($('freightCharges').value),
+          commissionType: state.selectedCommType,
+          commissionPct: getEffectiveCommPct(),
+          commissionFixed: toNum($('commissionFixed').value),
+          paymentTerms: termsVal,
+          paymentStatus: state.selectedStatus,
+          wbBilling: state.selectedWB,
+          remark: $('remark').value.trim(),
+          accountsRemark: $('accountsRemark').value.trim()
+        };
+
+        var btn = $('submitBtn');
+        btn.disabled = true;
+        btn.classList.add('opacity-70');
+        $('submitBtnText').textContent = payload.responseId ? 'Updating...' : 'Saving...';
+
+        if (IS_LIVE_GAS && navigator.onLine !== false) {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              btn.disabled = false;
+              btn.classList.remove('opacity-70');
+              applyDashboardPayload(res.dashboard);
+              resetForm(true);
+              showToast((res.isEdit ? 'Updated' : 'Saved') + ' Entry #' + res.srNo + ' (' + payload.salesPerson + ') → ' + res.monthYear + ' tab.');
+            })
+            .withFailureHandler(function (err) {
+              btn.disabled = false;
+              btn.classList.remove('opacity-70');
+              $('submitBtnText').textContent = payload.responseId ? 'Update Entry' : 'Save Sales Entry';
+              showToast('Error: ' + (err.message || err), true);
+            })
+            .saveEntry(payload);
+        } else {
+          // Preview Mode local save
+          var pv = payload.productValue;
+          var fr = payload.freightCharges;
+          var gst = Math.round((pv + fr) * 0.18 * 100) / 100;
+          var totalVal = Math.round((pv + fr + gst) * 100) / 100;
+          var commVal = Math.round(pv * (payload.commissionPct / 100) * 100) / 100;
+          var totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
+
+          var idx = payload.responseId
+            ? state.allEntries.findIndex(function (x) { return x.responseId === payload.responseId; })
+            : -1;
+          var maxSr = state.allEntries.reduce(function (m, x) { return Math.max(m, x.srNo || 0); }, 0);
+          var srNo = idx >= 0 ? state.allEntries[idx].srNo : (maxSr + 1);
+          var respId = idx >= 0 ? state.allEntries[idx].responseId : ('RK-' + Date.now());
+
+          var rec = Object.assign({}, payload, {
+            srNo: srNo,
+            responseId: respId,
+            gstValue: gst,
+            totalValue: totalVal,
+            commissionValuePct: commVal,
+            totalCommission: totalComm,
+            timestamp: new Date().toLocaleString('en-IN')
+          });
+
+          if (idx >= 0) state.allEntries[idx] = rec;
+          else state.allEntries.unshift(rec);
+
+           state.allEntries.sort(function (a, b) { return b.srNo - a.srNo; });
+           savePreviewStorage();
+           if (IS_LIVE_GAS) enqueuePendingPayload(payload);
+           applyDashboardPayload({
+            salesPersons: state.salesPersons,
+            allEntries: state.allEntries,
+            last10: state.allEntries.slice(0, 10)
+          });
+
+          btn.disabled = false;
+          btn.classList.remove('opacity-70');
+          resetForm(true);
+          showToast((idx >= 0 ? 'Updated' : 'Saved') + ' Entry #' + srNo + ' (' + rec.salesPerson + ') → ' + rec.monthYear + ' tab.');
+        }
+      }
+
+      // ---------- RENDER LAST 10 TRANSACTIONS ----------
+      function renderRecentList() {
+        var q = ($('recentSearch').value || '').toLowerCase().trim();
+        var isAdm = (state.currentUser && state.currentUser.role === 'ADMIN');
+        var myCode = (state.currentUser ? state.currentUser.code.toUpperCase() : '');
+
+        var list = state.last10.filter(function (item) {
+          if (!q) return true;
+          var hay = [item.srNo, item.monthYear, item.salesPerson, item.partyName, item.region, item.poNo, item.productKeyword, item.productName].join(' ').toLowerCase();
+          return hay.indexOf(q) !== -1;
+        });
+
+        var container = $('recentList');
+        if (!list.length) {
+          container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">No transactions yet. Submit an entry on the New Entry tab to see it here.</div>';
+          return;
+        }
+
+        container.innerHTML = list.map(function (item) {
+          var isRcd = item.paymentStatus === 'RCD';
+          var badgeCls = isRcd ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700';
+          var badgeTxt = isRcd ? 'RCD' : 'Pending';
+
+          var canEdit = isAdm || (item.salesPerson && item.salesPerson.toUpperCase() === myCode);
+          var editBtnHtml = canEdit
+            ? '<button type="button" data-edit-id="' + escapeHtml(item.responseId) + '" class="shrink-0 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 active:scale-95 transition">Edit</button>'
+            : '<span class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium border border-slate-200" title="Only Admin or assigned rep can edit">Locked</span>';
+
+          return (
+            '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5 space-y-2">' +
+            '<div class="flex items-start justify-between gap-2">' +
+            '<div>' +
+            '<div class="flex items-center gap-1.5 flex-wrap">' +
+            '<span class="text-xs font-bold text-blue-800">#' + item.srNo + '</span>' +
+            '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-700">' + escapeHtml(item.monthYear || item.month) + '</span>' +
+            '<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] font-bold text-indigo-700">' + escapeHtml(item.salesPerson) + '</span>' +
+            '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + badgeCls + '">' + badgeTxt + '</span>' +
+            '</div>' +
+            '<div class="text-sm font-bold text-slate-900 mt-1">' + escapeHtml(item.partyName) + '</div>' +
+            '<div class="text-xs text-slate-500">' + escapeHtml(item.region) + ' • PO: ' + escapeHtml(item.poNo) + ' • ' + escapeHtml(item.productKeyword) + (item.productName ? ' (' + escapeHtml(item.productName) + ')' : '') + '</div>' +
+            '</div>' +
+            editBtnHtml +
+            '</div>' +
+            '<div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">' +
+            '<div><span class="text-slate-500">Total:</span> <span class="font-bold text-slate-900">' + fmtINR(item.totalValue) + '</span></div>' +
+            '<div><span class="text-slate-500">Comm:</span> <span class="font-bold text-sky-700">' + fmtINR(item.totalCommission) + '</span></div>' +
+            '</div>' +
+            '</div>'
+          );
+        }).join('');
+      }
+
+      $('recentList').addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-edit-id]');
+        if (!btn) return;
+        var id = btn.getAttribute('data-edit-id');
+        var found = state.allEntries.find(function (x) { return String(x.responseId) === String(id); });
+        if (found) loadEntryForEdit(found);
+      });
+
+      // ---------- RENDER MULTI-YEAR MONTHLY DASHBOARD ----------
+      function buildDashMonthPills() {
+        var opts = ['ALL'].concat(FY_MONTHS);
+        $('dashMonthPills').innerHTML = opts.map(function (mo) {
+          var act = state.dashMonth === mo ? 'active' : '';
+          return '<button type="button" data-dash-mo="' + mo + '" class="pill-btn ' + act + ' shrink-0 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">' + mo + '</button>';
+        }).join('');
+      }
+
+      $('dashMonthPills').addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-dash-mo]');
+        if (!btn) return;
+        state.dashMonth = btn.getAttribute('data-dash-mo');
+        renderDashboard();
+      });
+
+      $('dashFySelect').addEventListener('change', function () {
+        state.dashFY = $('dashFySelect').value;
+        renderDashboard();
+      });
+
+      function entryMatchesFY(entry, fyStr) {
+        if (fyStr === 'ALL') return true;
+        return getFYFromMonthYear(entry.month, entry.year) === fyStr;
+      }
+
+      function renderDashboard() {
+        buildDashMonthPills();
+
+        var fyLabel = state.dashFY === 'ALL' ? 'All Years' : state.dashFY;
+        if (state.dashFY === 'ALL') {
+          $('dashActiveMonthLabel').textContent = state.dashMonth === 'ALL' ? 'All Years & Months' : ('All ' + state.dashMonth + ' across years');
+          $('dashTabsHint').textContent = 'All MMM-YYYY tabs combined';
+        } else {
+          var sy = fyStartYear(state.dashFY);
+          $('dashActiveMonthLabel').textContent = state.dashMonth === 'ALL'
+            ? (state.dashFY + ' (All 12 Months)')
+            : getMonthYearForFY(state.dashFY, state.dashMonth);
+          $('dashTabsHint').textContent = 'Tabs: APR-' + sy + ' to MAR-' + (sy + 1);
+        }
+
+        var fyFiltered = state.allEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
+        var filtered = state.dashMonth === 'ALL'
+          ? fyFiltered
+          : fyFiltered.filter(function (x) { return x.month === state.dashMonth; });
+
+        var totalSales = 0, totalComm = 0, totalProduct = 0, totalGst = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0;
+        filtered.forEach(function (x) {
+          totalSales += toNum(x.totalValue);
+          totalComm += toNum(x.totalCommission);
+          totalProduct += toNum(x.productValue);
+          totalGst += toNum(x.gstValue);
+          if (x.paymentStatus === 'RCD') {
+            collectedAmt += toNum(x.totalValue);
+          } else {
+            pendingAmt += toNum(x.totalValue);
+            pendingCnt += 1;
+          }
+        });
+
+        $('kpiSales').textContent = fmtINRCompact(totalSales);
+        $('kpiEntries').textContent = filtered.length + (filtered.length === 1 ? ' entry' : ' entries');
+        $('kpiComm').textContent = fmtINRCompact(totalComm);
+        $('kpiProductVal').textContent = 'Product: ' + fmtINRCompact(totalProduct);
+        $('kpiPendingAmt').textContent = fmtINRCompact(pendingAmt);
+        $('kpiPendingCnt').textContent = pendingCnt + ' pending ' + (pendingCnt === 1 ? 'order' : 'orders');
+        $('kpiCollectedAmt').textContent = fmtINRCompact(collectedAmt);
+        $('kpiGstAmt').textContent = 'GST: ' + fmtINRCompact(totalGst);
+
+        // Dynamic Sales Person Table
+        var repMap = {};
+        var repList = [];
+        state.salesPersons.forEach(function (sp) {
+          if (sp.active !== false || filtered.some(function (x) { return x.salesPerson === sp.code; })) {
+            repMap[sp.code] = sp;
+            repList.push(sp);
+          }
+        });
+        filtered.forEach(function (x) {
+          if (x.salesPerson && !repMap[x.salesPerson]) {
+            var extra = { code: x.salesPerson, name: x.salesPerson, active: false };
+            repMap[x.salesPerson] = extra;
+            repList.push(extra);
+          }
+        });
+
+        var tbody = $('salesPersonTable');
+        tbody.innerHTML = repList.map(function (sp) {
+          var rows = filtered.filter(function (x) { return x.salesPerson === sp.code; });
+          var sVal = rows.reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+          var cVal = rows.reduce(function (a, b) { return a + toNum(b.totalCommission); }, 0);
+          var pVal = rows.filter(function (x) { return x.paymentStatus !== 'RCD'; }).reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+          var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
+          var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
+          return (
+            '<tr>' +
+            '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
+            '<td class="py-2 px-2 text-right font-medium text-slate-700">' + rows.length + '</td>' +
+            '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
+            '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
+            '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
+            '</tr>'
+          );
+        }).join('');
+
+        // Monthly Sales Chart
+        $('chartTitle').textContent = fyLabel + ' Monthly Sales (Total Value ₹)';
+        var chartLabels = FY_MONTHS.map(function (mo) {
+          if (state.dashFY === 'ALL') return mo;
+          var my = getMonthYearForFY(state.dashFY, mo);
+          return mo + '-' + my.slice(-2);
+        });
+        var monthlyTotals = FY_MONTHS.map(function (mo) {
+          return fyFiltered
+            .filter(function (x) { return x.month === mo; })
+            .reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+        });
+        var barColors = FY_MONTHS.map(function (mo) {
+          return (state.dashMonth === mo) ? '#059669' : '#1e3a8a';
+        });
+
+        var ctx = $('monthlyChart').getContext('2d');
+        if (state.chartInstance) {
+          state.chartInstance.data.labels = chartLabels;
+          state.chartInstance.data.datasets[0].data = monthlyTotals;
+          state.chartInstance.data.datasets[0].backgroundColor = barColors;
+          state.chartInstance.update();
+        } else if (typeof Chart !== 'undefined') {
+          state.chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: chartLabels,
+              datasets: [{
+                label: 'Total Value (₹)',
+                data: monthlyTotals,
+                backgroundColor: barColors,
+                borderRadius: 6
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function (c) { return fmtINR(c.parsed.y); }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    callback: function (v) { return '₹' + Number(v).toLocaleString('en-IN'); },
+                    font: { size: 10 }
+                  }
+                },
+                x: {
+                  grid: { display: false },
+                  ticks: { font: { size: 10 } }
+                }
+              }
+            }
+          });
+        }
+      }
+
+      // ---------- CHANGE PIN CONTROLLER ----------
+      function openChangePinDialog() {
+        if (!state.currentUser) return;
+        $('currentPinInput').value = '';
+        $('newPinInput').value = '';
+        $('confirmPinInput').value = '';
+        $('changePinError').classList.add('hidden');
+
+        var isAdm = (state.currentUser.role === 'ADMIN');
+        var adminGroup = $('changePinAdminUserGroup');
+        if (isAdm) {
+          adminGroup.classList.remove('hidden');
+          var targetSel = $('changePinTargetUser');
+          targetSel.innerHTML = state.salesPersons.map(function (sp) {
+            return '<option value="' + escapeHtml(sp.code) + '"' + (sp.code === state.currentUser.code ? ' selected' : '') + '>' +
+              escapeHtml(sp.code + ' — ' + sp.name + (sp.role === 'ADMIN' ? ' [Admin]' : '')) + '</option>';
+          }).join('');
+        } else {
+          adminGroup.classList.add('hidden');
+        }
+        $('changePinModal').classList.remove('hidden');
+      }
+
+      function handleSaveNewPin() {
+        if (!state.currentUser) return;
+        var curPin = $('currentPinInput').value.trim();
+        var newPin = $('newPinInput').value.trim();
+        var confPin = $('confirmPinInput').value.trim();
+        var errEl = $('changePinError');
+
+        var isAdm = (state.currentUser.role === 'ADMIN');
+        var targetCode = isAdm ? $('changePinTargetUser').value : state.currentUser.code;
+
+        if (!curPin) {
+          errEl.textContent = 'Please enter your current PIN.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        if (!newPin || newPin.length < 4 || newPin.length > 8) {
+          errEl.textContent = 'New PIN must be between 4 and 8 digits.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        if (newPin !== confPin) {
+          errEl.textContent = 'New PIN and Confirm PIN do not match.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+
+        var saveBtn = $('saveNewPinBtn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Updating...';
+
+        if (IS_LIVE_GAS) {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Update PIN';
+              if (res && res.ok) {
+                if (targetCode === state.currentUser.code) {
+                  state.currentUser.pin = newPin;
+                  saveSession(state.currentUser);
+                }
+                $('changePinModal').classList.add('hidden');
+                showToast(res.message || 'PIN updated successfully!');
+              } else {
+                errEl.textContent = (res && res.message) ? res.message : 'Failed to update PIN.';
+                errEl.classList.remove('hidden');
+              }
+            })
+            .withFailureHandler(function (err) {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Update PIN';
+              errEl.textContent = 'Error: ' + (err.message || err);
+              errEl.classList.remove('hidden');
+            })
+            .updateUserPin(state.currentUser.code, curPin, targetCode, newPin);
+        } else {
+          // Preview Mode update
+          setTimeout(function () {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Update PIN';
+            if (curPin !== state.currentUser.pin) {
+              errEl.textContent = 'Current PIN is incorrect.';
+              errEl.classList.remove('hidden');
+              return;
+            }
+            var target = state.salesPersons.find(function (u) { return u.code === targetCode; });
+            if (target) target.pin = newPin;
+            if (targetCode === state.currentUser.code) {
+              state.currentUser.pin = newPin;
+              saveSession(state.currentUser);
+            }
+            $('changePinModal').classList.add('hidden');
+            showToast('PIN updated successfully for ' + targetCode + ' (Preview Mode)!');
+          }, 200);
+        }
+      }
+
+      // ---------- EMAIL REPORT CONTROLLER ----------
+      function getQuarterFromMonth(mo) {
+        var m = String(mo || '').toUpperCase().trim();
+        if (['APR', 'MAY', 'JUN'].indexOf(m) !== -1) return 'Q1';
+        if (['JUL', 'AUG', 'SEP'].indexOf(m) !== -1) return 'Q2';
+        if (['OCT', 'NOV', 'DEC'].indexOf(m) !== -1) return 'Q3';
+        if (['JAN', 'FEB', 'MAR'].indexOf(m) !== -1) return 'Q4';
+        return 'Q1';
+      }
+
+      function populateEmailReportOptions() {
+        var mSel = $('emailMonthSelect');
+        mSel.innerHTML = CAL_MONTHS.map(function (mo) {
+          return '<option value="' + mo + '">' + mo + '</option>';
+        }).join('');
+        mSel.value = currentCalMonth();
+
+        var ySel = $('emailYearSelect');
+        var curY = new Date().getFullYear();
+        var yOpts = [];
+        for (var y = curY - 2; y <= curY + 5; y++) {
+          yOpts.push('<option value="' + y + '">' + y + '</option>');
+        }
+        ySel.innerHTML = yOpts.join('');
+        ySel.value = String(curY);
+
+        var curStart = fyStartYear(getCurrentFY());
+        var fySet = {};
+        for (var f = curStart - 1; f <= curStart + 5; f++) {
+          fySet['FY ' + String(f).slice(-2) + '-' + String(f + 1).slice(-2)] = true;
+        }
+        state.allEntries.forEach(function (e) {
+          if (e.month && e.year) fySet[getFYFromMonthYear(e.month, e.year)] = true;
+        });
+        var fys = Object.keys(fySet).sort();
+        var fyHtml = fys.map(function (fy) {
+          return '<option value="' + fy + '">' + fy + '</option>';
+        }).join('');
+
+        $('emailQuarterFySelect').innerHTML = fyHtml;
+        $('emailQuarterFySelect').value = getCurrentFY();
+        $('emailFySelect').innerHTML = fyHtml;
+        $('emailFySelect').value = getCurrentFY();
+        $('emailQuarterSelect').value = getQuarterFromMonth(currentCalMonth());
+
+        var partySet = {};
+        state.allEntries.forEach(function (e) {
+          if (e.partyName && e.partyName.trim()) partySet[e.partyName.trim()] = true;
+        });
+        var parties = Object.keys(partySet).sort();
+        $('emailPartySelect').innerHTML = '<option value="">All Parties</option>' + parties.map(function (p) {
+          return '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>';
+        }).join('');
+
+        $('emailRepSelect').innerHTML = '<option value="">All Reps</option>' + state.salesPersons.map(function (sp) {
+          return '<option value="' + escapeHtml(sp.code) + '">' + escapeHtml(sp.code + (sp.name && sp.name !== sp.code ? ' — ' + sp.name : '')) + '</option>';
+        }).join('');
+
+        if (state.currentUser && state.currentUser.email) {
+          $('emailToInput').value = state.currentUser.email;
+        } else {
+          $('emailToInput').value = '';
+        }
+      }
+
+      function openEmailReportModal() {
+        if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
+          showToast('Only Admin can dispatch email reports.', true);
+          return;
+        }
+        populateEmailReportOptions();
+        setPillValue('emailPeriodPills', 'emailReportPeriodType', 'MONTH');
+        $('emailMonthGroup').classList.remove('hidden');
+        $('emailQuarterGroup').classList.add('hidden');
+        $('emailFyGroup').classList.add('hidden');
+        $('emailReportMsg').classList.add('hidden');
+        updateEmailReportPreview();
+        $('emailReportModal').classList.remove('hidden');
+      }
+
+      function updateEmailReportPreview() {
+        var pt = state.emailReportPeriodType || 'MONTH';
+        var mo = $('emailMonthSelect').value;
+        var yr = $('emailYearSelect').value;
+        var targetMY = mo + '-' + yr;
+        var qtr = $('emailQuarterSelect').value;
+        var qtrFY = $('emailQuarterFySelect').value;
+        var fy = $('emailFySelect').value;
+
+        var targetParty = ($('emailPartySelect').value || '').toLowerCase().trim();
+        var targetProd = ($('emailProductSelect').value || '').toUpperCase().trim();
+        var targetRep = ($('emailRepSelect').value || '').toUpperCase().trim();
+
+        var filtered = state.allEntries.filter(function (x) {
+          if (targetParty && (x.partyName || '').toLowerCase().trim() !== targetParty) return false;
+          if (targetProd && (x.productKeyword || '').toUpperCase().trim() !== targetProd) return false;
+          if (targetRep && (x.salesPerson || '').toUpperCase().trim() !== targetRep) return false;
+
+          var entryMY = (x.monthYear || (x.month + '-' + x.year)).toUpperCase().trim();
+          var entryFY = getFYFromMonthYear(x.month, x.year);
+          var entryQtr = getQuarterFromMonth(x.month);
+
+          if (pt === 'MONTH') {
+            return entryMY === targetMY;
+          } else if (pt === 'QUARTER') {
+            return entryFY === qtrFY && entryQtr === qtr;
+          } else if (pt === 'FY') {
+            return entryFY === fy;
+          }
+          return true;
+        });
+
+        var totalOrders = filtered.length;
+        var totalSales = 0;
+        var totalComm = 0;
+        var pendingAmt = 0;
+
+        filtered.forEach(function (x) {
+          totalSales += toNum(x.totalValue);
+          totalComm += toNum(x.totalCommission);
+          if (x.paymentStatus !== 'RCD') {
+            pendingAmt += toNum(x.totalValue);
+          }
+        });
+
+        $('emailPreviewOrders').textContent = totalOrders;
+        $('emailPreviewSales').textContent = fmtINRCompact(totalSales);
+        $('emailPreviewComm').textContent = fmtINRCompact(totalComm);
+        $('emailPreviewPending').textContent = fmtINRCompact(pendingAmt);
+      }
+
+      function handleSendEmailReport() {
+        if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
+          showToast('Only Admin can dispatch email reports.', true);
+          return;
+        }
+
+        var pt = state.emailReportPeriodType || 'MONTH';
+        var mo = $('emailMonthSelect').value;
+        var yr = $('emailYearSelect').value;
+        var targetMY = mo + '-' + yr;
+        var qtr = $('emailQuarterSelect').value;
+        var qtrFY = $('emailQuarterFySelect').value;
+        var fy = $('emailFySelect').value;
+
+        var toEmails = $('emailToInput').value.trim();
+
+        var filters = {
+          periodType: pt,
+          monthYear: targetMY,
+          quarter: qtr,
+          fy: (pt === 'QUARTER' ? qtrFY : (pt === 'FY' ? fy : getFYFromMonthYear(mo, yr))),
+          partyName: $('emailPartySelect').value.trim(),
+          productKeyword: $('emailProductSelect').value.trim(),
+          salesPerson: $('emailRepSelect').value.trim()
+        };
+
+        var payload = {
+          authCode: state.currentUser.code,
+          authPin: state.currentUser.pin,
+          toEmails: toEmails,
+          filters: filters
+        };
+
+        var btn = $('sendEmailReportBtn');
+        var btnText = $('sendEmailReportBtnText');
+        var msgEl = $('emailReportMsg');
+
+        btn.disabled = true;
+        btnText.textContent = 'Sending...';
+        msgEl.classList.add('hidden');
+
+        if (IS_LIVE_GAS) {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              btn.disabled = false;
+              btnText.textContent = 'Send Email Report';
+              if (res && res.ok) {
+                $('emailReportModal').classList.add('hidden');
+                showToast(res.message || 'Email report sent successfully!');
+              } else {
+                msgEl.className = 'p-2.5 rounded-xl text-xs font-semibold text-center bg-rose-50 text-rose-700 border border-rose-200';
+                msgEl.textContent = (res && res.message) ? res.message : 'Failed to send report.';
+                msgEl.classList.remove('hidden');
+              }
+            })
+            .withFailureHandler(function (err) {
+              btn.disabled = false;
+              btnText.textContent = 'Send Email Report';
+              msgEl.className = 'p-2.5 rounded-xl text-xs font-semibold text-center bg-rose-50 text-rose-700 border border-rose-200';
+              msgEl.textContent = 'Error: ' + (err.message || err);
+              msgEl.classList.remove('hidden');
+            })
+            .sendEmailReport(payload);
+        } else {
+          // Preview Mode simulation
+          setTimeout(function () {
+            btn.disabled = false;
+            btnText.textContent = 'Send Email Report';
+            $('emailReportModal').classList.add('hidden');
+            var dest = toEmails || (state.currentUser.email || 'configured Admin email');
+            showToast('Email report preview dispatched (Preview Mode) to ' + dest + '!');
+          }, 400);
+        }
+      }
+
+      // ---------- WIRE UP EVENTS ----------
+      populateYearOptions();
+      populateDashFYOptions();
+
+      setupPillGroup('regionPills', 'selectedRegion', 'regionOther');
+      setupPillGroup('commTypePills', 'selectedCommType');
+      setupPillGroup('commPctPills', 'selectedCommPct', 'commPctOther', updateLiveCalc);
+      setupPillGroup('termsPills', 'selectedTerms', 'termsOther');
+      setupPillGroup('statusPills', 'selectedStatus');
+      setupPillGroup('wbPills', 'selectedWB');
+      setupPillGroup('emailPeriodPills', 'emailReportPeriodType', null, function (pt) {
+        $('emailMonthGroup').classList.toggle('hidden', pt !== 'MONTH');
+        $('emailQuarterGroup').classList.toggle('hidden', pt !== 'QUARTER');
+        $('emailFyGroup').classList.toggle('hidden', pt !== 'FY');
+        updateEmailReportPreview();
+      });
+
+      $('month').addEventListener('change', updateTargetTabBadge);
+      $('year').addEventListener('change', updateTargetTabBadge);
+
+      $('poDate').addEventListener('change', function () {
+        if ($('responseId').value) return;
+        var v = $('poDate').value;
+        var p = v ? v.split('-') : [];
+        if (p.length === 3) {
+          var yr = p[0];
+          var mo = CAL_MONTHS[Number(p[1]) - 1];
+          if (mo) $('month').value = mo;
+          if (yr) {
+            if (!$('year').querySelector('option[value="' + yr + '"]')) {
+              var opt = document.createElement('option');
+              opt.value = yr;
+              opt.textContent = yr;
+              $('year').appendChild(opt);
+            }
+            $('year').value = yr;
+          }
+          updateTargetTabBadge();
+        }
+      });
+
+      ['productValue', 'freightCharges', 'commissionFixed', 'commPctOther'].forEach(function (id) {
+        $(id).addEventListener('input', updateLiveCalc);
+      });
+
+      document.querySelectorAll('.nav-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+          switchTab(b.getAttribute('data-tab'));
+        });
+      });
+
+      $('salesForm').addEventListener('submit', handleSubmit);
+      $('resetFormBtn').addEventListener('click', function () { resetForm(true); });
+      $('cancelEditBtn').addEventListener('click', function () { resetForm(true); });
+      $('refreshBtn').addEventListener('click', function () { syncData(true); });
+      window.addEventListener('online', function () {
+        updateConnectionStatus();
+        syncData(true);
+      });
+      window.addEventListener('offline', updateConnectionStatus);
+      $('recentSearch').addEventListener('input', renderRecentList);
+      $('logoutBtn').addEventListener('click', logoutUser);
+
+      // Change PIN handlers
+      $('openChangePinBtn').addEventListener('click', openChangePinDialog);
+      $('closeChangePinBtn').addEventListener('click', function () { $('changePinModal').classList.add('hidden'); });
+      $('cancelChangePinBtn').addEventListener('click', function () { $('changePinModal').classList.add('hidden'); });
+      $('saveNewPinBtn').addEventListener('click', handleSaveNewPin);
+
+      // Email Report handlers
+      $('openEmailReportBtn').addEventListener('click', openEmailReportModal);
+      $('closeEmailReportBtn').addEventListener('click', function () { $('emailReportModal').classList.add('hidden'); });
+      $('cancelEmailReportBtn').addEventListener('click', function () { $('emailReportModal').classList.add('hidden'); });
+      $('sendEmailReportBtn').addEventListener('click', handleSendEmailReport);
+
+      ['emailMonthSelect', 'emailYearSelect', 'emailQuarterSelect', 'emailQuarterFySelect', 'emailFySelect', 'emailPartySelect', 'emailProductSelect', 'emailRepSelect'].forEach(function (id) {
+        $(id).addEventListener('change', updateEmailReportPreview);
+      });
+
+      // Keypad & PIN input handlers
+      document.querySelectorAll('.keypad-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (state.enteredPin.length < 8) {
+            state.enteredPin += btn.getAttribute('data-num');
+            updatePinDots();
+            if (state.enteredPin.length === 4) {
+              var selCode = $('loginUserSelect').value;
+              if (selCode) executeLogin(selCode, state.enteredPin);
+            }
+          }
+        });
+      });
+
+      $('keypadBackspace').addEventListener('click', function () {
+        if (state.enteredPin.length > 0) {
+          state.enteredPin = state.enteredPin.slice(0, -1);
+          updatePinDots();
+        }
+      });
+
+      $('keypadClear').addEventListener('click', clearPin);
+
+      $('pinDotsContainer').addEventListener('click', function () {
+        $('pinHiddenInput').focus();
+      });
+
+      $('pinHiddenInput').addEventListener('input', function (e) {
+        state.enteredPin = e.target.value.replace(/\D/g, '').slice(0, 8);
+        updatePinDots();
+        if (state.enteredPin.length === 4) {
+          var selCode = $('loginUserSelect').value;
+          if (selCode) executeLogin(selCode, state.enteredPin);
+        }
+      });
+
+      $('loginSubmitBtn').addEventListener('click', function () {
+        var selCode = $('loginUserSelect').value;
+        executeLogin(selCode, state.enteredPin);
+      });
+
+      // Demo login shortcuts
+      document.querySelectorAll('.demo-login-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+          var code = chip.getAttribute('data-code');
+          var pin = chip.getAttribute('data-pin');
+          $('loginUserSelect').value = code;
+          state.enteredPin = pin;
+          updatePinDots();
+          executeLogin(code, pin);
+        });
+      });
+
+      $('fillSampleBtn').addEventListener('click', function () {
+        if (!state.currentUser) {
+          showLoginModal();
+          showToast('Please sign in first to test sample order.');
+          return;
+        }
+
+        $('month').value = currentCalMonth();
+        $('year').value = currentYear();
+
+        if (state.currentUser.role === 'ADMIN') {
+          var firstRep = state.salesPersons.find(function (sp) { return sp.active !== false; });
+          $('salesPerson').value = firstRep ? firstRep.code : 'RK';
+        } else {
+          $('salesPerson').value = state.currentUser.code;
+        }
+
+        $('partyName').value = 'Precision CNC Works';
+        setPillValue('regionPills', 'selectedRegion', 'Pune', 'regionOther');
+        $('poNo').value = 'PO-2627-104';
+        $('poDate').value = todayIso();
+        $('productKeyword').value = 'LS';
+        $('productName').value = 'Leadshine Servo Drive 750W';
+        $('poValue').value = '48000';
+        $('productValue').value = '46500';
+        $('freightCharges').value = '1500';
+        setPillValue('commTypePills', 'selectedCommType', 'P');
+        setPillValue('commPctPills', 'selectedCommPct', '5', 'commPctOther');
+        $('commissionFixed').value = '0';
+        setPillValue('termsPills', 'selectedTerms', 'PI', 'termsOther');
+        setPillValue('statusPills', 'selectedStatus', '');
+        setPillValue('wbPills', 'selectedWB', 'B');
+        $('remark').value = 'Dispatch via BlueDart';
+        updateTargetTabBadge();
+        updateLiveCalc();
+        switchTab('form');
+        showToast('Sample order filled for ' + $('salesPerson').value + ' — tap Save Sales Entry to test');
+      });
+
+      // ---------- INIT ----------
+      resetForm(false);
+      var savedSession = loadSavedSession();
+      if (savedSession) {
+        setAuthenticatedUser(savedSession);
+      } else {
+        showLoginModal();
+      }
+      syncData(false);
+      registerPwa();
+      setupPwaInstallButton();
+      updateConnectionStatus();
+    })();
+  </script>
+</body>
+
+</html>
