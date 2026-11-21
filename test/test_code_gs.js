@@ -55,7 +55,18 @@ class MockRange {
   setDataValidation() { return this; }
   setFontSize() { return this; }
   setFormulas() { return this; }
-  setFormula() { return this; }
+  setFormula(f) {
+    const targetRow = this.row - 1;
+    while (this.sheet.data.length <= targetRow) {
+      this.sheet.data.push([]);
+    }
+    const targetCol = this.col - 1;
+    while (this.sheet.data[targetRow].length <= targetCol) {
+      this.sheet.data[targetRow].push('');
+    }
+    this.sheet.data[targetRow][targetCol] = f;
+    return this;
+  }
 }
 
 class MockSheet {
@@ -447,6 +458,100 @@ const pFallback = sandbox.parseMonthYearFields_('', '2026-11-15');
 assert.strictEqual(pFallback.month, 'NOV');
 assert.strictEqual(pFallback.year, '2026');
 console.log('✓ parseMonthYearFields_ passed.');
+
+// Test 11: Month sheet summary row verification
+console.log('Test 11: Month sheet summary row verification...');
+const monthTab = mockSS.getSheetByName('NOV-2026');
+assert.ok(monthTab, 'NOV-2026 tab should exist after saveEntry');
+const mRows = monthTab.data;
+const lastRowIdx = mRows.length - 1;
+assert.ok(lastRowIdx >= 2, 'Should have header, data rows, and summary row');
+const summaryRow = mRows[lastRowIdx];
+assert.strictEqual(summaryRow[0], 'TOTAL', 'Summary row col 1 should be TOTAL');
+assert.strictEqual(summaryRow[3], 'TOTAL', 'Summary row col 4 should be TOTAL');
+assert.ok(String(summaryRow[13]).includes('=SUM(N2:N'), 'Col 14 (PO Value) should have SUM formula: ' + summaryRow[13]);
+assert.ok(String(summaryRow[14]).includes('=SUM(O2:O'), 'Col 15 (Product Value) should have SUM formula: ' + summaryRow[14]);
+assert.ok(String(summaryRow[22]).includes('=SUM(W2:W'), 'Col 23 (Total Commission) should have SUM formula: ' + summaryRow[22]);
+console.log('✓ Month sheet summary row with Total PO, Product Value, and Total Commission verified.');
+
+// Test 12: Rigorous verification of saveEntry saving to BOTH All Entries AND month sheet
+console.log('Test 12: Verifying data gets saved to BOTH All Entries and Month Sheet...');
+const testPayloadA = {
+  authCode: 'RK',
+  authPin: '1234',
+  monthYear: 'DEC-2026',
+  salesPerson: 'RK',
+  partyName: 'Precision Tech Works',
+  region: 'Pune',
+  poNo: 'PO-DEC-001',
+  poDate: '2026-12-05',
+  productKeyword: 'LS',
+  productValue: 50000,
+  freightCharges: 1000,
+  poValue: 51000,
+  commissionType: 'P',
+  commissionPct: 5,
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+};
+
+const resA = sandbox.saveEntry(testPayloadA);
+assert.strictEqual(resA.ok, true);
+const allSh = mockSS.getSheetByName('All Entries');
+const decSh = mockSS.getSheetByName('DEC-2026');
+assert.ok(allSh, 'All Entries sheet must exist');
+assert.ok(decSh, 'DEC-2026 month sheet must exist');
+
+// 1. Check entry exists in All Entries
+const allRowA = allSh.data.find(r => r && r[31] === resA.responseId);
+assert.ok(allRowA, 'Entry must be saved into All Entries');
+assert.strictEqual(allRowA[1], 'DEC-2026', 'All Entries monthYear must be DEC-2026');
+assert.strictEqual(allRowA[3], 'Precision Tech Works', 'All Entries party must match');
+assert.strictEqual(allRowA[5], 'PO-DEC-001', 'All Entries PO must match');
+assert.strictEqual(allRowA[13], 51000, 'All Entries PO Value must match');
+
+// 2. Check entry exists in DEC-2026 month sheet
+const decRowA = decSh.data.find(r => r && r[31] === resA.responseId);
+assert.ok(decRowA, 'Entry must be saved into DEC-2026 month sheet');
+assert.strictEqual(decRowA[1], 'DEC-2026', 'DEC-2026 month sheet monthYear must match');
+assert.strictEqual(decRowA[3], 'Precision Tech Works', 'DEC-2026 month sheet party must match');
+assert.strictEqual(decRowA[5], 'PO-DEC-001', 'DEC-2026 month sheet PO must match');
+assert.strictEqual(decRowA[13], 51000, 'DEC-2026 month sheet PO Value must match');
+
+// 3. Verify DEC-2026 ends with a TOTAL summary row
+const decLastIdx = decSh.data.length - 1;
+assert.strictEqual(decSh.data[decLastIdx][0], 'TOTAL', 'Last row in DEC-2026 must be TOTAL');
+
+// 4. Edit entry to update party name and verify BOTH sheets reflect edit
+const editRes = sandbox.saveEntry({
+  authCode: 'RK',
+  authPin: '1234',
+  responseId: resA.responseId,
+  monthYear: 'DEC-2026',
+  salesPerson: 'RK',
+  partyName: 'Precision Tech Works (Renamed)',
+  region: 'Pune',
+  poNo: 'PO-DEC-001',
+  poDate: '2026-12-05',
+  productKeyword: 'LS',
+  productValue: 60000,
+  freightCharges: 1000,
+  poValue: 61000,
+  commissionType: 'P',
+  commissionPct: 5,
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+});
+assert.strictEqual(editRes.ok, true);
+assert.strictEqual(editRes.isEdit, true);
+
+const allRowEdited = allSh.data.find(r => r && r[31] === resA.responseId);
+const decRowEdited = decSh.data.find(r => r && r[31] === resA.responseId);
+assert.strictEqual(allRowEdited[3], 'Precision Tech Works (Renamed)', 'All Entries must have updated party');
+assert.strictEqual(decRowEdited[3], 'Precision Tech Works (Renamed)', 'DEC-2026 must have updated party');
+assert.strictEqual(allRowEdited[13], 61000, 'All Entries must have updated PO value');
+assert.strictEqual(decRowEdited[13], 61000, 'DEC-2026 must have updated PO value');
+console.log('✓ Verified: Data is actively and accurately saved into BOTH All Entries and month sheets!');
 
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');

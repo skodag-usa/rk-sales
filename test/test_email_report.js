@@ -48,7 +48,29 @@ class MockRange {
   setDataValidation() { return this; }
   setFontSize() { return this; }
   setFormulas() { return this; }
-  setFormula() { return this; }
+  setFormula(f) {
+    const tr = this.row - 1;
+    while (this.sheet.data.length <= tr) this.sheet.data.push([]);
+    const tc = this.col - 1;
+    while (this.sheet.data[tr].length <= tc) this.sheet.data[tr].push('');
+    this.sheet.data[tr][tc] = f;
+    return this;
+  }
+  getFormulas() {
+    const res = [];
+    for (let r = 0; r < this.numRows; r++) {
+      const rowArr = [];
+      const tr = this.row - 1 + r;
+      const rowData = (tr < this.sheet.data.length) ? this.sheet.data[tr] : [];
+      for (let c = 0; c < this.numCols; c++) {
+        const tc = this.col - 1 + c;
+        const cell = tc < rowData.length ? rowData[tc] : '';
+        rowArr.push(typeof cell === 'string' && cell.startsWith('=') ? cell : '');
+      }
+      res.push(rowArr);
+    }
+    return res;
+  }
 }
 
 class MockSheet {
@@ -78,6 +100,7 @@ class MockSheet {
   }
   setFrozenRows() {}
   deleteRow(idx) { this.data.splice(idx - 1, 1); }
+  getSheetId() { return this.sheetId !== undefined ? this.sheetId : 12345; }
 }
 
 class MockSpreadsheet {
@@ -142,7 +165,14 @@ function createSandbox(ss) {
       })
     },
     Session: { getScriptTimeZone: () => 'Asia/Kolkata' },
-    Utilities: { formatDate: () => '21-Nov-2026 10:00' },
+    Utilities: {
+      formatDate: () => '21-Nov-2026 10:00',
+      newBlob: (data, type, name) => ({
+        getDataAsString: () => data,
+        getContentType: () => type,
+        getName: () => name
+      })
+    },
     ScriptApp: {
       getService: () => ({
         getUrl: () => 'https://script.google.com/macros/s/mock/exec'
@@ -748,6 +778,41 @@ console.log('Test 21: onOpen menu includes email report menu items...');
   assert.ok(menuItems.some(i => i.includes('Setup automated')), 'Menu should have Setup trigger item');
   assert.ok(menuItems.some(i => i.includes('Remove automated')), 'Menu should have Remove trigger item');
   console.log('✓ onOpen menu items passed.');
+}
+
+// ======== TEST 22: Monthly email report includes monthly sheet tab attachment & link ========
+console.log('Test 22: Monthly email report includes monthly sheet tab CSV attachment, tab link, and table...');
+{
+  const ss = buildTestSS();
+  const sandbox = createSandbox(ss);
+  vm.createContext(sandbox);
+  vm.runInContext(codeSource, sandbox);
+
+  const result = sandbox.sendEmailReport({
+    authCode: 'RK',
+    authPin: '1234',
+    toEmails: 'admin@example.com',
+    filters: { periodType: 'MONTH', monthYear: 'NOV-2026' }
+  });
+
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.hasAttachment, true, 'Report should confirm attachment was added');
+  assert.strictEqual(mailLog.length, 1);
+  const sentMail = mailLog[0];
+  assert.ok(sentMail.attachments && sentMail.attachments.length >= 1, 'MailApp must receive month tab attachment');
+  const att = sentMail.attachments.find(a => a.getName().endsWith('.csv'));
+  assert.ok(att, 'CSV attachment must be present');
+  assert.strictEqual(att.getName(), 'RK_Sales_NOV-2026.csv', 'Attachment name must be RK_Sales_NOV-2026.csv');
+  assert.ok(att.getDataAsString().includes('ABC Corp'), 'Attachment CSV must contain month row party name');
+  assert.ok(att.getDataAsString().includes('Leadshine'), 'Attachment CSV must contain product name');
+  assert.ok(att.getDataAsString().includes('=ROUND('), 'Attachment CSV must contain live row formulas (=ROUND)');
+  assert.ok(att.getDataAsString().includes('=SUM('), 'Attachment CSV must contain live summary TOTAL formula (=SUM)');
+  assert.ok(att.getDataAsString().includes('"TOTAL"'), 'Attachment CSV must include TOTAL summary row');
+  assert.ok(sentMail.htmlBody.includes('Monthly Sheet Tab Data (NOV-2026)'), 'HTML body should include month tab section');
+  assert.ok(sentMail.htmlBody.includes('Open NOV-2026 Tab'), 'HTML body should include direct tab link button');
+  assert.ok(sentMail.htmlBody.includes('#gid=12345'), 'Direct tab link must contain #gid parameter');
+  assert.ok(sentMail.htmlBody.includes('Live Formulas &amp; Totals'), 'HTML body should mention formulas and totals');
+  console.log('✓ Monthly report sheet tab attachment with formulas and total verified.');
 }
 
 console.log('\n========================================');

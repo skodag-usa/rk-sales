@@ -522,41 +522,21 @@
       </div>
 
       <!-- KPI Cards -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
           <div class="text-[11px] font-semibold text-slate-500">Total PO Value (₹)</div>
           <div id="kpiPoVal" class="text-lg font-bold text-slate-900 mt-1">₹0</div>
           <div id="kpiEntries" class="text-[11px] text-slate-500 mt-0.5">0 entries</div>
         </div>
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-           <div class="text-[11px] font-semibold text-slate-500">Total Product Value (₹)</div>
-           <div id="kpiSalesVal" class="text-lg font-bold text-blue-900 mt-1">₹0</div>
-           <div id="kpiProductVal" class="text-[11px] text-slate-500 mt-0.5">Sales Value: ₹0</div>
-         </div>
-         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-           <div class="text-[11px] font-semibold text-slate-500">Total Value (₹)</div>
-           <div id="kpiSales" class="text-lg font-bold text-slate-900 mt-1">₹0</div>
-           <div id="kpiGstAmt" class="text-[11px] text-slate-500 mt-0.5">GST Value: ₹0</div>
-         </div>
-         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-           <div class="text-[11px] font-semibold text-slate-500">Commission Value % (₹)</div>
-           <div id="kpiCommPct" class="text-lg font-bold text-sky-700 mt-1">₹0</div>
-           <div class="text-[11px] text-slate-500 mt-0.5">Percentage commission</div>
-         </div>
-         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-           <div class="text-[11px] font-semibold text-slate-500">Total Commission (₹)</div>
-           <div id="kpiComm" class="text-lg font-bold text-indigo-700 mt-1">₹0</div>
-           <div class="text-[11px] text-slate-500 mt-0.5">Percentage + fixed</div>
+          <div class="text-[11px] font-semibold text-slate-500">Total Product Value (₹)</div>
+          <div id="kpiSalesVal" class="text-lg font-bold text-blue-900 mt-1">₹0</div>
+          <div id="kpiProductVal" class="text-[11px] text-slate-500 mt-0.5">Sales Value: ₹0</div>
         </div>
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-          <div class="text-[11px] font-semibold text-slate-500">Collected (RCD)</div>
-          <div id="kpiCollectedAmt" class="text-lg font-bold text-emerald-600 mt-1">₹0</div>
-          <div class="text-[11px] text-slate-500 mt-0.5">Payment received</div>
-        </div>
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3.5">
-          <div class="text-[11px] font-semibold text-slate-500">Payment Pending (₹)</div>
-          <div id="kpiPendingAmt" class="text-lg font-bold text-rose-600 mt-1">₹0</div>
-          <div id="kpiPendingCnt" class="text-[11px] text-slate-500 mt-0.5">0 pending orders</div>
+          <div class="text-[11px] font-semibold text-slate-500">Total Commission (₹)</div>
+          <div id="kpiComm" class="text-lg font-bold text-indigo-700 mt-1">₹0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Percentage + fixed</div>
         </div>
       </div>
 
@@ -2193,19 +2173,19 @@
           }
         });
 
-        $('kpiPoVal').textContent = fmtINRCompact(totalPo);
-        $('kpiSalesVal').textContent = fmtINRCompact(totalProduct);
-        $('kpiSales').textContent = fmtINRCompact(totalSales);
-        $('kpiEntries').textContent = filtered.length + (filtered.length === 1 ? ' entry' : ' entries');
-        $('kpiComm').textContent = fmtINRCompact(totalComm);
-         $('kpiProductVal').textContent = 'Sales Value: ' + fmtINRCompact(totalProduct);
-         $('kpiCommPct').textContent = fmtINRCompact(filtered.reduce(function (sum, x) {
-           return sum + toNum(x.commissionValuePct);
-         }, 0));
-        $('kpiPendingAmt').textContent = fmtINRCompact(pendingAmt);
-        $('kpiPendingCnt').textContent = pendingCnt + ' pending ' + (pendingCnt === 1 ? 'order' : 'orders');
-        $('kpiCollectedAmt').textContent = fmtINRCompact(collectedAmt);
-        $('kpiGstAmt').textContent = 'GST: ' + fmtINRCompact(totalGst);
+        if ($('kpiPoVal')) $('kpiPoVal').textContent = fmtINRCompact(totalPo);
+        if ($('kpiSalesVal')) $('kpiSalesVal').textContent = fmtINRCompact(totalProduct);
+        if ($('kpiEntries')) $('kpiEntries').textContent = filtered.length + (filtered.length === 1 ? ' entry' : ' entries');
+        if ($('kpiComm')) $('kpiComm').textContent = fmtINRCompact(totalComm);
+        if ($('kpiProductVal')) $('kpiProductVal').textContent = 'Sales Value: ' + fmtINRCompact(totalProduct);
+        if ($('kpiSales')) $('kpiSales').textContent = fmtINRCompact(totalSales);
+        if ($('kpiCommPct')) $('kpiCommPct').textContent = fmtINRCompact(filtered.reduce(function (sum, x) {
+          return sum + toNum(x.commissionValuePct);
+        }, 0));
+        if ($('kpiPendingAmt')) $('kpiPendingAmt').textContent = fmtINRCompact(pendingAmt);
+        if ($('kpiPendingCnt')) $('kpiPendingCnt').textContent = pendingCnt + ' pending ' + (pendingCnt === 1 ? 'order' : 'orders');
+        if ($('kpiCollectedAmt')) $('kpiCollectedAmt').textContent = fmtINRCompact(collectedAmt);
+        if ($('kpiGstAmt')) $('kpiGstAmt').textContent = 'GST: ' + fmtINRCompact(totalGst);
 
         // Dynamic Sales Person Table
         var repMap = {};

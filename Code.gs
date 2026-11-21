@@ -116,6 +116,7 @@ function onOpen() {
     .addItem('Set up sheets', 'setupRKSalesSheets')
     .addItem('Show web app link', 'showWebAppLink')
     .addItem('Refresh sheet formatting (All tabs)', 'applyFormattingToAllSheets')
+    .addItem('Update month sheet totals', 'updateAllMonthSheetsSummaryRows')
     .addSeparator()
     .addItem('Send monthly email report now', 'sendAutomatedMonthlyEmailReport')
     .addItem('Setup automated monthly email trigger (1st of month)', 'setupMonthlyEmailTrigger')
@@ -391,6 +392,7 @@ function setupRKSalesSheets() {
     if (parseMonthTabKey_(setupSheet.getName()) !== null) {
       ensureDataSheetSchema_(setupSheet);
       styleDataSheet_(setupSheet);
+      updateMonthSheetSummaryRow_(setupSheet);
     }
   }
 
@@ -486,7 +488,7 @@ function applyDataConditionalFormatting_(sh) {
 
     // 2. Open PO: Invoice value (Invoice No) not filled: Light Green background (#D9EAD3) on Party Name (Column D) & Invoice No (Column J)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=AND($A2<>"",$J2="")')
+      .whenFormulaSatisfied('=AND($A2<>"",$A2<>"TOTAL",$J2="")')
       .setBackground('#D9EAD3')
       .setRanges([partyRange, invoiceRange])
       .build(),
@@ -534,6 +536,7 @@ function applyFormattingToAllSheets() {
     if (parseMonthTabKey_(sh.getName()) !== null || FY_MONTHS.indexOf(sh.getName()) !== -1) {
       ensureDataSheetSchema_(sh);
       styleDataSheet_(sh);
+      updateMonthSheetSummaryRow_(sh);
     }
   }
   try {
@@ -547,14 +550,22 @@ function applyFormattingToAllSheets() {
 }
 
 function normalizeMonthYear_(payload) {
-  var raw = String(payload.monthYear || '').toUpperCase().trim();
-  if (/^[A-Z]{3}-\d{4}$/.test(raw)) {
-    var parts = raw.split('-');
-    if (CAL_MONTHS.indexOf(parts[0]) !== -1) return raw;
+  var raw = String(payload.monthYear || payload.month || '').trim();
+  if (raw) {
+    var parsed = parseMonthYearFields_(raw, payload.poDate);
+    if (parsed && parsed.monthYear && /^[A-Z]{3}-\d{4}$/.test(parsed.monthYear)) {
+      return parsed.monthYear;
+    }
   }
   var mo = String(payload.month || '').toUpperCase().trim();
   var yr = String(payload.year || '').trim();
   if (CAL_MONTHS.indexOf(mo) !== -1 && /^\d{4}$/.test(yr)) return mo + '-' + yr;
+  if (payload.poDate) {
+    var pParsed = parseMonthYearFields_('', payload.poDate);
+    if (pParsed && pParsed.monthYear && /^[A-Z]{3}-\d{4}$/.test(pParsed.monthYear)) {
+      return pParsed.monthYear;
+    }
+  }
   throw new Error('Invalid Month/Year: ' + (raw || (mo + '-' + yr)));
 }
 
@@ -702,12 +713,18 @@ function saveEntry(payload) {
       if (name === monthYear) continue;
       if (parseMonthTabKey_(name) !== null || FY_MONTHS.indexOf(name) !== -1) {
         var oldRow = findRow_(sh, id);
-        if (oldRow) sh.deleteRow(oldRow);
+        if (oldRow) {
+          sh.deleteRow(oldRow);
+          updateMonthSheetSummaryRow_(sh);
+        }
       }
     }
 
     var monthSheet = getMonthSheet_(ss, monthYear);
-    upsert_(monthSheet, findRow_(monthSheet, id), row);
+    removeMonthSheetSummaryRow_(monthSheet);
+    var existingMonthRow = findRow_(monthSheet, id);
+    upsert_(monthSheet, existingMonthRow, row);
+    updateMonthSheetSummaryRow_(monthSheet);
     SpreadsheetApp.flush();
 
     return {
@@ -911,6 +928,77 @@ function getMonthSheet_(ss, monthYear) {
   sh = ss.insertSheet(monthYear, Math.min(insertIdx, sheets.length));
   styleDataSheet_(sh);
   return sh;
+}
+
+function isSummaryRow_(sh, rowNum) {
+  if (!sh || rowNum < 2) return false;
+  try {
+    var val = String(sh.getRange(rowNum, 1).getValue() || '').toUpperCase().trim();
+    if (val === 'TOTAL') return true;
+    var pVal = String(sh.getRange(rowNum, 4).getValue() || '').toUpperCase().trim();
+    if (pVal === 'TOTAL' && String(sh.getRange(rowNum, ID_COL).getValue() || '').trim() === '') return true;
+  } catch (e) {}
+  return false;
+}
+
+function removeMonthSheetSummaryRow_(sh) {
+  if (!sh) return;
+  var last = sh.getLastRow();
+  while (last >= 2 && isSummaryRow_(sh, last)) {
+    sh.deleteRow(last);
+    last = sh.getLastRow();
+  }
+}
+
+function updateMonthSheetSummaryRow_(sh) {
+  if (!sh) return;
+  removeMonthSheetSummaryRow_(sh);
+  var last = sh.getLastRow();
+  if (last < 2) return; // No data rows present
+
+  var totalRow = last + 1;
+  var rowData = new Array(HEADERS.length);
+  for (var i = 0; i < HEADERS.length; i++) rowData[i] = '';
+  rowData[0] = 'TOTAL';
+  rowData[3] = 'TOTAL';
+
+  var range = sh.getRange(totalRow, 1, 1, HEADERS.length);
+  range.setValues([rowData]);
+
+  // Set formulas:
+  // Col 14 (N): Total PO Value
+  // Col 15 (O): Total Product Value
+  // Col 23 (W): Total Commission
+  sh.getRange(totalRow, 14).setFormula('=SUM(N2:N' + last + ')');
+  sh.getRange(totalRow, 15).setFormula('=SUM(O2:O' + last + ')');
+  sh.getRange(totalRow, 23).setFormula('=SUM(W2:W' + last + ')');
+
+  try {
+    range.setFontWeight('bold');
+    range.setBackground('#F1F5F9');
+    range.setFontColor('#0F172A');
+  } catch (fmtErr) {}
+
+  try {
+    sh.getRange(totalRow, 14).setNumberFormat('₹#,##0.00');
+    sh.getRange(totalRow, 15).setNumberFormat('₹#,##0.00');
+    sh.getRange(totalRow, 23).setNumberFormat('₹#,##0.00');
+  } catch (numErr) {}
+}
+
+function updateAllMonthSheetsSummaryRows(optSS) {
+  var ss = optSS || getSS_();
+  var sheets = ss.getSheets();
+  var updated = 0;
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    var name = sh.getName();
+    if (parseMonthTabKey_(name) !== null || FY_MONTHS.indexOf(name) !== -1) {
+      updateMonthSheetSummaryRow_(sh);
+      updated++;
+    }
+  }
+  return { ok: true, updatedSheets: updated };
 }
 
 function findRow_(sh, id) {
@@ -1196,7 +1284,8 @@ function generateReportData_(ss, filters) {
 /**
  * Builds responsive, professionally formatted HTML email.
  */
-function buildHtmlReportEmail_(report, webAppUrl, sheetUrl) {
+function buildHtmlReportEmail_(report, webAppUrl, sheetUrl, optMonthTabInfo) {
+  var monthTabInfo = optMonthTabInfo || null;
   var m = report.metrics;
   var pLabel = '';
   if (report.periodType === 'MONTH') pLabel = 'Monthly Report — ' + report.monthYear;
@@ -1253,6 +1342,62 @@ function buildHtmlReportEmail_(report, webAppUrl, sheetUrl) {
             '</tr>' +
           '</tbody>' +
         '</table>' +
+      '</div>';
+  }
+
+  // Month sheet tab section if monthTabInfo is present
+  var monthTabSectionHtml = '';
+  if (monthTabInfo && monthTabInfo.rows && monthTabInfo.rows.length > 0) {
+    var tabRowsHtml = monthTabInfo.rows.map(function (row) {
+      if (row.isTotal) {
+        return (
+          '<tr style="background:#f1f5f9;font-weight:bold;border-top:2px solid #cbd5e1;color:#0f172a;">' +
+            '<td style="padding:6px 4px;">' + (row.srNo || 'TOTAL') + '</td>' +
+            '<td style="padding:6px 4px;" colspan="3">MONTH TOTAL SUMMARY</td>' +
+            '<td style="padding:6px 4px;text-align:right;">' + fmtINRCompact_(row.poValue) + '</td>' +
+            '<td style="padding:6px 4px;text-align:right;">' + fmtINRCompact_(row.productValue) + '</td>' +
+            '<td style="padding:6px 4px;text-align:right;color:#0284c7;">' + fmtINRCompact_(row.commission) + '</td>' +
+            '<td style="padding:6px 4px;text-align:right;">—</td>' +
+          '</tr>'
+        );
+      }
+      return (
+        '<tr style="border-bottom:1px solid #f1f5f9;">' +
+          '<td style="padding:6px 4px;color:#64748b;">' + (row.srNo || '') + '</td>' +
+          '<td style="padding:6px 4px;font-weight:600;color:#1e293b;">' + (row.party || '—') + '</td>' +
+          '<td style="padding:6px 4px;color:#475569;">' + (row.poNo || '—') + '</td>' +
+          '<td style="padding:6px 4px;color:#475569;">' + (row.product || '—') + '</td>' +
+          '<td style="padding:6px 4px;text-align:right;font-weight:600;color:#0f172a;">' + fmtINRCompact_(row.poValue) + '</td>' +
+          '<td style="padding:6px 4px;text-align:right;font-weight:600;color:#0f172a;">' + fmtINRCompact_(row.productValue) + '</td>' +
+          '<td style="padding:6px 4px;text-align:right;color:#0284c7;font-weight:600;">' + fmtINRCompact_(row.commission) + '</td>' +
+          '<td style="padding:6px 4px;text-align:right;color:' + (row.status === 'RCD' ? '#059669' : '#e11d48') + ';font-weight:600;">' + (row.status || 'PENDING') + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    monthTabSectionHtml =
+      '<div style="margin-top:20px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">' +
+        '<div style="margin-bottom:12px;">' +
+          '<span style="font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;color:#0f766e;">Monthly Sheet Tab Data (' + monthTabInfo.name + ')</span>' +
+        '</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px;text-align:left;">' +
+          '<thead>' +
+            '<tr style="border-bottom:2px solid #e2e8f0;color:#475569;">' +
+              '<th style="padding:6px 4px;font-weight:600;">Sr</th>' +
+              '<th style="padding:6px 4px;font-weight:600;">Party</th>' +
+              '<th style="padding:6px 4px;font-weight:600;">PO No</th>' +
+              '<th style="padding:6px 4px;font-weight:600;">Product</th>' +
+              '<th style="padding:6px 4px;font-weight:600;text-align:right;">PO ₹</th>' +
+              '<th style="padding:6px 4px;font-weight:600;text-align:right;">Prod ₹</th>' +
+              '<th style="padding:6px 4px;font-weight:600;text-align:right;">Comm ₹</th>' +
+              '<th style="padding:6px 4px;font-weight:600;text-align:right;">Status</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + tabRowsHtml + '</tbody>' +
+        '</table>' +
+        '<div style="margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;font-size:11px;color:#166534;">' +
+          '<strong>📎 Sheet Tab Attached with Live Formulas &amp; Totals:</strong> Includes full month dataset with formulas (GST, Total Value, Commission, and Total Sums).' +
+        '</div>' +
       '</div>';
   }
 
@@ -1375,9 +1520,11 @@ function buildHtmlReportEmail_(report, webAppUrl, sheetUrl) {
 
           // Action Buttons
           '<div style="margin-top:24px;text-align:center;">' +
-            '<a href="' + (webAppUrl || '#') + '" target="_blank" style="display:inline-block;padding:10px 20px;border-radius:8px;background-color:#1e3a8a;color:#ffffff;text-decoration:none;font-weight:bold;font-size:13px;margin:0 6px;">Open Web App</a>' +
-            '<a href="' + (sheetUrl || '#') + '" target="_blank" style="display:inline-block;padding:10px 20px;border-radius:8px;background-color:#059669;color:#ffffff;text-decoration:none;font-weight:bold;font-size:13px;margin:0 6px;">Open Google Sheet</a>' +
+            '<a href="' + (webAppUrl || '#') + '" target="_blank" style="display:inline-block;padding:10px 18px;border-radius:8px;background-color:#1e3a8a;color:#ffffff;text-decoration:none;font-weight:bold;font-size:13px;margin:4px 3px;">Open Web App</a>' +
+            '<a href="' + (sheetUrl || '#') + '" target="_blank" style="display:inline-block;padding:10px 18px;border-radius:8px;background-color:#059669;color:#ffffff;text-decoration:none;font-weight:bold;font-size:13px;margin:4px 3px;">Open Google Sheet</a>' +
+            (monthTabInfo && monthTabInfo.url ? '<a href="' + monthTabInfo.url + '" target="_blank" style="display:inline-block;padding:10px 18px;border-radius:8px;background-color:#0d9488;color:#ffffff;text-decoration:none;font-weight:bold;font-size:13px;margin:4px 3px;">Open ' + monthTabInfo.name + ' Tab</a>' : '') +
           '</div>' +
+          monthTabSectionHtml +
         '</div>' +
 
         // Footer
@@ -1427,7 +1574,9 @@ function sendEmailReport(payload) {
   var reportData = generateReportData_(ss, payload.filters || {});
   var webAppUrl = webAppUrl_();
   var sheetUrl = ss.getUrl();
-  var htmlBody = buildHtmlReportEmail_(reportData, webAppUrl, sheetUrl);
+  var targetMY = reportData.periodType === 'MONTH' ? reportData.monthYear : null;
+  var monthTabInfo = targetMY ? getMonthTabInfo_(ss, targetMY) : null;
+  var htmlBody = buildHtmlReportEmail_(reportData, webAppUrl, sheetUrl, monthTabInfo);
 
   var periodLabel = reportData.periodType === 'MONTH' ? reportData.monthYear :
     (reportData.periodType === 'QUARTER' ? (reportData.quarter + ' ' + reportData.fy) :
@@ -1435,18 +1584,192 @@ function sendEmailReport(payload) {
 
   var subject = 'RK Sales Report — ' + periodLabel + ' (Sales: ' + fmtINRCompact_(reportData.metrics.totalSales) + ')';
 
-  MailApp.sendEmail({
+  var attachments = [];
+  if (monthTabInfo && monthTabInfo.sheet) {
+    var xlsxAttachment = createMonthTabExcelAttachment_(ss, monthTabInfo.sheet, monthTabInfo.name);
+    if (xlsxAttachment) attachments.push(xlsxAttachment);
+    var tabAttachment = createMonthTabAttachment_(monthTabInfo.sheet, monthTabInfo.name);
+    if (tabAttachment) attachments.push(tabAttachment);
+  }
+
+  var mailOpts = {
     to: toEmails,
     subject: subject,
     htmlBody: htmlBody
-  });
+  };
+  if (attachments.length > 0) {
+    mailOpts.attachments = attachments;
+  }
+
+  MailApp.sendEmail(mailOpts);
 
   return {
     ok: true,
     message: 'Report successfully sent to ' + toEmails,
     period: periodLabel,
-    totalSales: reportData.metrics.totalSales
+    totalSales: reportData.metrics.totalSales,
+    hasAttachment: attachments.length > 0
   };
+}
+
+/**
+ * Ensures a month sheet exists and is populated with data if available from All Entries.
+ */
+function ensureMonthSheetData_(ss, monthYear) {
+  if (!ss || !monthYear) return null;
+  var sh = ss.getSheetByName(monthYear);
+  if (!sh) {
+    sh = getMonthSheet_(ss, monthYear);
+  }
+  if (sh && sh.getLastRow() < 2) {
+    var all = ss.getSheetByName('All Entries');
+    if (all && all.getLastRow() >= 2) {
+      var vals = all.getRange(2, 1, all.getLastRow() - 1, HEADERS.length).getValues();
+      var monthRows = [];
+      for (var i = 0; i < vals.length; i++) {
+        var r = vals[i];
+        var rowMY = String(r[1] || '').toUpperCase().trim();
+        if (rowMY === monthYear.toUpperCase().trim()) {
+          monthRows.push(r);
+        }
+      }
+      if (monthRows.length > 0) {
+        for (var mi = 0; mi < monthRows.length; mi++) {
+          upsert_(sh, mi + 2, monthRows[mi]);
+        }
+        updateMonthSheetSummaryRow_(sh);
+      }
+    }
+  }
+  return sh;
+}
+
+/**
+ * Retrieves sheet tab metadata, direct URL, and row records for email embedding.
+ */
+function getMonthTabInfo_(ss, monthYear) {
+  if (!ss || !monthYear) return null;
+  var sh = ensureMonthSheetData_(ss, monthYear);
+  if (!sh) return null;
+
+  var gid = (typeof sh.getSheetId === 'function') ? sh.getSheetId() : null;
+  var baseSheetUrl = ss.getUrl() || '';
+  var tabUrl = baseSheetUrl + (gid !== null ? ('#gid=' + gid) : '');
+
+  var rows = [];
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn() || HEADERS.length;
+  if (lastRow >= 2) {
+    var rawVals = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var sumPo = 0;
+    var sumProd = 0;
+    var sumComm = 0;
+    for (var i = 0; i < rawVals.length; i++) {
+      var r = rawVals[i];
+      var isTotal = String(r[0] || '').toUpperCase().trim() === 'TOTAL';
+      if (isTotal) {
+        var pVal = toNum_(r[13]) || sumPo;
+        var prodVal = toNum_(r[14]) || sumProd;
+        var cVal = toNum_(r[22]) || sumComm;
+        rows.push({
+          srNo: 'TOTAL',
+          month: monthYear,
+          rep: '',
+          party: 'TOTAL',
+          poNo: '',
+          poDate: '',
+          product: '',
+          poValue: pVal,
+          productValue: prodVal,
+          totalValue: '',
+          commission: cVal,
+          status: '',
+          isTotal: true
+        });
+      } else {
+        var pv = toNum_(r[13]);
+        var prdv = toNum_(r[14]);
+        var cv = toNum_(r[22]);
+        sumPo += pv;
+        sumProd += prdv;
+        sumComm += cv;
+        rows.push({
+          srNo: r[0],
+          month: r[1],
+          rep: r[2],
+          party: r[3],
+          poNo: r[5],
+          poDate: r[6],
+          product: r[11],
+          poValue: r[13],
+          productValue: r[14],
+          totalValue: r[17],
+          commission: r[22],
+          status: r[24],
+          isTotal: false
+        });
+      }
+    }
+  }
+
+  return {
+    name: monthYear,
+    sheet: sh,
+    gid: gid,
+    url: tabUrl,
+    rows: rows
+  };
+}
+
+/**
+ * Creates a spreadsheet attachment blob of the month sheet data with all live formulas and totals.
+ */
+function createMonthTabAttachment_(sh, monthYear) {
+  if (!sh || typeof Utilities === 'undefined' || typeof Utilities.newBlob !== 'function') return null;
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn() || HEADERS.length;
+  if (lastRow < 1) return null;
+
+  var vals = sh.getRange(1, 1, lastRow, lastCol).getValues();
+  var formulas = (typeof sh.getRange(1, 1, lastRow, lastCol).getFormulas === 'function')
+    ? sh.getRange(1, 1, lastRow, lastCol).getFormulas()
+    : [];
+
+  var csvLines = vals.map(function (row, rIdx) {
+    return row.map(function (cell, cIdx) {
+      var formula = (formulas[rIdx] && formulas[rIdx][cIdx]) ? String(formulas[rIdx][cIdx]).trim() : '';
+      var valToOutput = (formula && formula.indexOf('=') === 0) ? formula : cell;
+      var str = String(valToOutput === null || valToOutput === undefined ? '' : valToOutput).replace(/"/g, '""');
+      return '"' + str + '"';
+    }).join(',');
+  });
+  var csvContent = csvLines.join('\r\n');
+  return Utilities.newBlob(csvContent, 'text/csv', 'RK_Sales_' + monthYear + '.csv');
+}
+
+/**
+ * In live Apps Script, exports native Microsoft Excel (.xlsx) file with full formatting and formulas.
+ */
+function createMonthTabExcelAttachment_(ss, sh, monthYear) {
+  try {
+    if (typeof UrlFetchApp !== 'undefined' && typeof ScriptApp !== 'undefined' && typeof ScriptApp.getOAuthToken === 'function') {
+      var ssId = (ss && typeof ss.getId === 'function') ? ss.getId() : '';
+      var gid = (sh && typeof sh.getSheetId === 'function') ? sh.getSheetId() : '';
+      if (ssId) {
+        var exportUrl = 'https://docs.google.com/spreadsheets/d/' + ssId + '/export?format=xlsx' + (gid !== '' ? ('&gid=' + gid) : '');
+        var resp = UrlFetchApp.fetch(exportUrl, {
+          headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+          muteHttpExceptions: true
+        });
+        if (resp && resp.getResponseCode && resp.getResponseCode() === 200) {
+          return Utilities.newBlob(resp.getBlob().getBytes(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'RK_Sales_' + monthYear + '.xlsx');
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Native XLSX export unavailable, using CSV formula export: ' + e);
+  }
+  return null;
 }
 
 /**
@@ -1484,7 +1807,8 @@ function sendAutomatedMonthlyEmailReport() {
 
   var webAppUrl = webAppUrl_();
   var sheetUrl = ss.getUrl();
-  var htmlBody = buildHtmlReportEmail_(reportData, webAppUrl, sheetUrl);
+  var monthTabInfo = getMonthTabInfo_(ss, targetMY);
+  var htmlBody = buildHtmlReportEmail_(reportData, webAppUrl, sheetUrl, monthTabInfo);
 
   // Check if previous month closed a quarter or FY
   var isQuarterEnd = (prevMonthName === 'JUN' || prevMonthName === 'SEP' || prevMonthName === 'DEC' || prevMonthName === 'MAR');
@@ -1493,14 +1817,27 @@ function sendAutomatedMonthlyEmailReport() {
 
   var subject = 'RK Sales Monthly Report — ' + targetMY + milestoneTag + ' (Sales: ' + fmtINRCompact_(reportData.metrics.totalSales) + ')';
 
-  MailApp.sendEmail({
+  var attachments = [];
+  if (monthTabInfo && monthTabInfo.sheet) {
+    var xlsxAttachment = createMonthTabExcelAttachment_(ss, monthTabInfo.sheet, monthTabInfo.name);
+    if (xlsxAttachment) attachments.push(xlsxAttachment);
+    var tabAttachment = createMonthTabAttachment_(monthTabInfo.sheet, monthTabInfo.name);
+    if (tabAttachment) attachments.push(tabAttachment);
+  }
+
+  var mailOpts = {
     to: adminEmails.join(', '),
     subject: subject,
     htmlBody: htmlBody
-  });
+  };
+  if (attachments.length > 0) {
+    mailOpts.attachments = attachments;
+  }
+
+  MailApp.sendEmail(mailOpts);
 
   console.log('Automated monthly report sent for ' + targetMY + ' to ' + adminEmails.join(', '));
-  return { ok: true, monthYear: targetMY, recipients: adminEmails };
+  return { ok: true, monthYear: targetMY, recipients: adminEmails, hasAttachment: attachments.length > 0 };
 }
 
 /**
