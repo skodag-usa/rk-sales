@@ -50,6 +50,7 @@ class MockRange {
   }
   setFontWeight() { return this; }
   setBackground() { return this; }
+  setFontColor() { return this; }
   setNumberFormat() { return this; }
   setDataValidation() { return this; }
   setFontSize() { return this; }
@@ -83,6 +84,7 @@ class MockSheet {
     return new MockRange(this, r, c, nr || 1, nc || 1);
   }
   setFrozenRows() {}
+  setConditionalFormatRules(r) { this.rules = r; }
   deleteRow(idx) { this.data.splice(idx - 1, 1); }
 }
 
@@ -385,34 +387,66 @@ testSheet.setConditionalFormatRules = (r) => { appliedRules.push(...r); };
 
 sandbox.applyDataConditionalFormatting_(testSheet);
 
-assert.ok(appliedRules.length >= 5, 'Must have at least 5 conditional format rules');
+assert.strictEqual(appliedRules.length, 5, 'Must have exactly 5 cell-level conditional format rules');
 
-// 1. Trupti doubt tick: Sr No in Light Pink (#fce7f3)
-const pinkRule = appliedRules.find(r => r.formula === '=$AC2="YES"');
-assert.ok(pinkRule, 'Must have rule for Trupti doubt flag ($AC2="YES")');
-assert.strictEqual(pinkRule.bg, '#fce7f3', 'Sr No doubt background must be light pink #fce7f3');
+// 1. Need to Revisit / Commission Doubt flagged: Sr No in Light Pink (#F8BBD0)
+const pinkRule = appliedRules.find(r => r.formula && (r.formula.includes('$AC2="YES"') || r.formula.includes('$AC2=TRUE')));
+assert.ok(pinkRule, 'Must have rule for Trupti doubt flag ($AC2="YES" or TRUE)');
+assert.strictEqual(pinkRule.bg, '#F8BBD0', 'Sr No doubt background must be light pink #F8BBD0');
 
-// 2. Open PO: Customer name & Invoice cell in Light Green (#dcfce7)
-const openPoRule = appliedRules.find(r => r.formula === '=$J2=""');
+// 2. Open PO: Party Name & Invoice cell in Light Green (#D9EAD3)
+const openPoRule = appliedRules.find(r => r.formula && r.formula.includes('$J2=""'));
 assert.ok(openPoRule, 'Must have rule for Open PO ($J2="")');
-assert.strictEqual(openPoRule.bg, '#dcfce7', 'Open PO background must be light green #dcfce7');
+assert.strictEqual(openPoRule.bg, '#D9EAD3', 'Open PO background must be light green #D9EAD3');
 
-// 3. Percentage other than 5%: Yellow (#fef08a)
+// 3. Percentage other than 5%: Yellow (#FFF59D)
 const pctRule = appliedRules.find(r => r.formula && r.formula.includes('ROUND($T2,4)<>0.05'));
 assert.ok(pctRule, 'Must have rule for % other than 5%');
-assert.strictEqual(pctRule.bg, '#fef08a', 'Non-5% commission must be yellow #fef08a');
+assert.strictEqual(pctRule.bg, '#FFF59D', 'Non-5% commission must be yellow #FFF59D');
 
-// 4. Commission type F or P + F: Yellow (#fef08a)
+// 4. Commission type F or P + F: Yellow (#FFF59D)
 const fixedTypeRule = appliedRules.find(r => r.formula && (r.formula.includes('$S2="P + F"') || r.formula.includes('$S2="F"')));
 assert.ok(fixedTypeRule, 'Must have rule for Commission Type F / P + F');
-assert.strictEqual(fixedTypeRule.bg, '#fef08a', 'Fixed commission type must be yellow #fef08a');
+assert.strictEqual(fixedTypeRule.bg, '#FFF59D', 'Fixed commission type must be yellow #FFF59D');
 
-// 5. WB selected: Blue font color (#1d4ed8)
+// 5. WB selected: Blue text color (#1565C0)
 const wbRule = appliedRules.find(r => r.formula === '=$Z2="WB"');
 assert.ok(wbRule, 'Must have rule for WB remark');
-assert.strictEqual(wbRule.color, '#1d4ed8', 'WB remark font color must be Blue #1d4ed8');
+assert.strictEqual(wbRule.color, '#1565C0', 'WB remark font color must be Blue #1565C0');
 
-console.log('✓ applyDataConditionalFormatting_ verified all formatting rules.');
+// Test 9: Verify applyFormattingToAllSheets runs without error
+console.log('Test 9: applyFormattingToAllSheets execution...');
+const allTabsRes = sandbox.applyFormattingToAllSheets();
+assert.strictEqual(allTabsRes, true);
+console.log('✓ applyFormattingToAllSheets passed.');
+
+// Test 10: Verify parseMonthYearFields_ robust parsing
+console.log('Test 10: parseMonthYearFields_ robustness...');
+const pDateObj = sandbox.parseMonthYearFields_(new Date(2026, 10, 1));
+assert.strictEqual(pDateObj.month, 'NOV');
+assert.strictEqual(pDateObj.year, '2026');
+assert.strictEqual(pDateObj.monthYear, 'NOV-2026');
+
+const pStandard = sandbox.parseMonthYearFields_('NOV-2026');
+assert.strictEqual(pStandard.month, 'NOV');
+assert.strictEqual(pStandard.year, '2026');
+
+const p2Digit = sandbox.parseMonthYearFields_('NOV-26');
+assert.strictEqual(p2Digit.month, 'NOV');
+assert.strictEqual(p2Digit.year, '2026');
+
+const pFullName = sandbox.parseMonthYearFields_('November 2026');
+assert.strictEqual(pFullName.month, 'NOV');
+assert.strictEqual(pFullName.year, '2026');
+
+const pDateStr = sandbox.parseMonthYearFields_('Sun Nov 01 2026 00:00:00 GMT+0530 (IST)');
+assert.strictEqual(pDateStr.month, 'NOV');
+assert.strictEqual(pDateStr.year, '2026');
+
+const pFallback = sandbox.parseMonthYearFields_('', '2026-11-15');
+assert.strictEqual(pFallback.month, 'NOV');
+assert.strictEqual(pFallback.year, '2026');
+console.log('✓ parseMonthYearFields_ passed.');
 
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');

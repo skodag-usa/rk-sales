@@ -37,9 +37,9 @@
     }
 
     .pill-btn.active {
-      background-color: #1e3a8a;
-      color: #ffffff;
-      border-color: #1e3a8a;
+      background-color: #1e3a8a !important;
+      color: #ffffff !important;
+      border-color: #1e3a8a !important;
       box-shadow: 0 1px 2px rgba(30, 58, 138, 0.25);
     }
 
@@ -298,7 +298,7 @@
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Product Keyword *</label>
             <div id="prodKeywordPills" class="flex flex-wrap gap-1 mb-1.5">
                <button type="button" data-val="LS"
-                 class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">LS</button>
+                 class="pill-btn active px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">LS</button>
               <button type="button" data-val="BC"
                 class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">BC</button>
               <button type="button" data-val="RP"
@@ -320,7 +320,7 @@
               <button type="button" data-val="OT"
                 class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">OT</button>
             </div>
-            <input id="productKeyword" type="text" required placeholder="Selected keyword(s) or custom"
+            <input id="productKeyword" type="text" required placeholder="Selected keyword(s) or custom" value="LS"
               class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none" />
           </div>
 
@@ -966,10 +966,91 @@
         return mo + '-' + yr;
       }
 
+      var FULL_MONTH_NAMES = {
+        'JANUARY': 'JAN', 'FEBRUARY': 'FEB', 'MARCH': 'MAR', 'APRIL': 'APR',
+        'MAY': 'MAY', 'JUNE': 'JUN', 'JULY': 'JUL', 'AUGUST': 'AUG',
+        'SEPTEMBER': 'SEP', 'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
+      };
+
+      function normalizeMonthCode(val) {
+        if (!val) return '';
+        var s = String(val).toUpperCase().trim();
+        if (s === 'ALL') return 'ALL';
+        if (CAL_MONTHS.indexOf(s) !== -1) return s;
+        var m3 = s.match(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b/);
+        if (m3) return m3[1];
+        for (var fName in FULL_MONTH_NAMES) {
+          if (s.indexOf(fName) !== -1) return FULL_MONTH_NAMES[fName];
+        }
+        if (s.length >= 8) {
+          var d = new Date(s);
+          if (!isNaN(d.getTime())) return CAL_MONTHS[d.getMonth()] || '';
+        }
+        return s.slice(0, 3);
+      }
+
+      function getEntryMonth(entry) {
+        if (!entry) return '';
+        if (entry.month) {
+          var mo = normalizeMonthCode(entry.month);
+          if (CAL_MONTHS.indexOf(mo) !== -1) return mo;
+        }
+        if (entry.monthYear) {
+          var p1 = String(entry.monthYear).trim().split(/[-/\s_]/)[0];
+          var mo2 = normalizeMonthCode(p1);
+          if (CAL_MONTHS.indexOf(mo2) !== -1) return mo2;
+        }
+        if (entry.poDate) {
+          var parts = String(entry.poDate).split(/[-/]/);
+          if (parts.length === 3) {
+            if (parts[0].length === 4) {
+              var mIdx = Number(parts[1]) - 1;
+              if (mIdx >= 0 && mIdx < 12) return CAL_MONTHS[mIdx];
+            } else if (parts[2].length === 4) {
+              var mIdx2 = Number(parts[1]) - 1;
+              if (mIdx2 >= 0 && mIdx2 < 12) return CAL_MONTHS[mIdx2];
+            }
+          }
+          var d = new Date(entry.poDate);
+          if (!isNaN(d.getTime())) return CAL_MONTHS[d.getMonth()] || '';
+        }
+        return '';
+      }
+
+      function getEntryYear(entry) {
+        if (!entry) return '';
+        var yr = String(entry.year || '').trim();
+        if (/^\d{4}$/.test(yr)) return yr;
+        if (/^\d{2}$/.test(yr)) return '20' + yr;
+        if (entry.monthYear) {
+          var m = String(entry.monthYear).match(/(\d{4})/);
+          if (m) return m[1];
+          var m2 = String(entry.monthYear).match(/[-/\s_](\d{2})$/);
+          if (m2) return '20' + m2[1];
+        }
+        if (entry.poDate) {
+          var ym = String(entry.poDate).match(/(\d{4})/);
+          if (ym) return ym[1];
+        }
+        return String(new Date().getFullYear());
+      }
+
+      function normalizeEntry(entry) {
+        if (!entry || typeof entry !== 'object') return entry;
+        var mo = getEntryMonth(entry);
+        var yr = getEntryYear(entry);
+        if (mo) entry.month = mo;
+        if (yr) entry.year = yr;
+        if (mo && yr) entry.monthYear = mo + '-' + yr;
+        return entry;
+      }
+
       function getFYFromMonthYear(mo, yr) {
+        var mCode = normalizeMonthCode(mo);
         var y = Number(yr);
         if (!y) return getCurrentFY();
-        var startY = (mo === 'JAN' || mo === 'FEB' || mo === 'MAR') ? (y - 1) : y;
+        if (y < 100) y += 2000;
+        var startY = (mCode === 'JAN' || mCode === 'FEB' || mCode === 'MAR') ? (y - 1) : y;
         return 'FY ' + String(startY).slice(-2) + '-' + String(startY + 1).slice(-2);
       }
 
@@ -981,12 +1062,20 @@
         return String(startY).slice(-2) + String(startY + 1).slice(-2);
       }
 
+      function currentCalMonth() {
+        return CAL_MONTHS[new Date().getMonth()] || 'NOV';
+      }
+
+      function currentYear() {
+        return String(new Date().getFullYear());
+      }
+
       var state = {
         currentUser: null, // { code, name, role, pin }
         enteredPin: '',
         activeTab: 'form',
         dashFY: getCurrentFY(),
-        dashMonth: 'ALL',
+        dashMonth: currentCalMonth(),
         salesPersons: DEFAULT_SALES_PERSONS.slice(),
         allEntries: [],
         last10: [],
@@ -1022,14 +1111,6 @@
         var m = String(d.getMonth() + 1).padStart(2, '0');
         var day = String(d.getDate()).padStart(2, '0');
         return d.getFullYear() + '-' + m + '-' + day;
-      }
-
-      function currentCalMonth() {
-        return CAL_MONTHS[new Date().getMonth()] || 'NOV';
-      }
-
-      function currentYear() {
-        return String(new Date().getFullYear());
       }
 
       function escapeHtml(s) {
@@ -1438,7 +1519,9 @@
           fySet['FY ' + String(y).slice(-2) + '-' + String(y + 1).slice(-2)] = true;
         }
         state.allEntries.forEach(function (e) {
-          if (e.month && e.year) fySet[getFYFromMonthYear(e.month, e.year)] = true;
+          var mo = getEntryMonth(e);
+          var yr = getEntryYear(e);
+          if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
         });
         var fys = Object.keys(fySet).sort();
         var sel = $('dashFySelect');
@@ -1562,7 +1645,7 @@
         $('piDate').value = '';
         $('invoiceNo').value = '';
         $('invoiceDate').value = '';
-        $('productKeyword').value = '';
+        $('productKeyword').value = 'LS';
         updateProdKeywordPillStates();
         $('productName').value = '';
         $('poValue').value = '';
@@ -1609,25 +1692,13 @@
         $('responseId').value = entry.responseId || '';
 
         // Robust month population
-        var mVal = entry.month ? String(entry.month).toUpperCase().trim() : '';
-         if (!mVal && entry.monthYear) {
-           mVal = String(entry.monthYear).toUpperCase().trim().split('-')[0];
-         }
-         if (CAL_MONTHS.indexOf(mVal) === -1 && entry.poDate) {
-           var poParts = String(entry.poDate).split('-');
-           if (poParts.length === 3) mVal = CAL_MONTHS[Number(poParts[1]) - 1] || '';
-         }
-        if (CAL_MONTHS.indexOf(mVal) !== -1) {
+        var mVal = getEntryMonth(entry);
+        if (mVal && CAL_MONTHS.indexOf(mVal) !== -1) {
           $('month').value = mVal;
         }
 
         // Robust year population
-        var yVal = entry.year ? String(entry.year).trim() : '';
-         if (!yVal && entry.monthYear) {
-           var yParts = String(entry.monthYear).trim().split('-');
-           if (yParts.length > 1) yVal = yParts[1];
-         }
-         if (!yVal && entry.poDate) yVal = String(entry.poDate).split('-')[0] || '';
+        var yVal = getEntryYear(entry);
         if (yVal) {
           if (!$('year').querySelector('option[value="' + yVal + '"]')) {
             var opt = document.createElement('option');
@@ -1809,8 +1880,12 @@
           populateSalesPersonOptions();
           updateSalesPersonFieldForRole();
         }
-        state.allEntries = Array.isArray(data.allEntries) ? data.allEntries : [];
-        state.last10 = Array.isArray(data.last10) ? data.last10 : state.allEntries.slice(0, 10);
+        state.allEntries = (Array.isArray(data.allEntries) ? data.allEntries : []).map(function (entry) {
+          return normalizeEntry(entry);
+        });
+        state.last10 = (Array.isArray(data.last10) ? data.last10 : state.allEntries.slice(0, 10)).map(function (entry) {
+          return normalizeEntry(entry);
+        });
         if (data.sheetUrl) {
           state.sheetUrl = data.sheetUrl;
           $('openSheetLink').href = data.sheetUrl;
@@ -1958,7 +2033,7 @@
           var srNo = idx >= 0 ? state.allEntries[idx].srNo : (maxSr + 1);
           var respId = idx >= 0 ? state.allEntries[idx].responseId : ('RK-' + Date.now());
 
-          var rec = Object.assign({}, payload, {
+          var rec = normalizeEntry(Object.assign({}, payload, {
             srNo: srNo,
             responseId: respId,
             revisit: payload.revisit,
@@ -1967,7 +2042,7 @@
             commissionValuePct: commVal,
             totalCommission: totalComm,
             timestamp: new Date().toLocaleString('en-IN')
-          });
+          }));
 
           if (idx >= 0) state.allEntries[idx] = rec;
           else state.allEntries.unshift(rec);
@@ -2075,29 +2150,33 @@
       });
 
       function entryMatchesFY(entry, fyStr) {
-        if (fyStr === 'ALL') return true;
-        return getFYFromMonthYear(entry.month, entry.year) === fyStr;
+        if (!fyStr || fyStr === 'ALL') return true;
+        var mo = getEntryMonth(entry);
+        var yr = getEntryYear(entry);
+        return getFYFromMonthYear(mo, yr) === fyStr;
       }
 
       function renderDashboard() {
         buildDashMonthPills();
 
         var fyLabel = state.dashFY === 'ALL' ? 'All Years' : state.dashFY;
+        var targetMo = normalizeMonthCode(state.dashMonth);
+
         if (state.dashFY === 'ALL') {
-          $('dashActiveMonthLabel').textContent = state.dashMonth === 'ALL' ? 'All Years & Months' : ('All ' + state.dashMonth + ' across years');
+          $('dashActiveMonthLabel').textContent = targetMo === 'ALL' ? 'All Years & Months' : ('All ' + targetMo + ' across years');
           $('dashTabsHint').textContent = 'All MMM-YYYY tabs combined';
         } else {
           var sy = fyStartYear(state.dashFY);
-          $('dashActiveMonthLabel').textContent = state.dashMonth === 'ALL'
+          $('dashActiveMonthLabel').textContent = targetMo === 'ALL'
             ? (state.dashFY + ' (All 12 Months)')
-            : getMonthYearForFY(state.dashFY, state.dashMonth);
+            : getMonthYearForFY(state.dashFY, targetMo);
           $('dashTabsHint').textContent = 'Tabs: APR-' + sy + ' to MAR-' + (sy + 1);
         }
 
         var fyFiltered = state.allEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
-        var filtered = state.dashMonth === 'ALL'
+        var filtered = targetMo === 'ALL'
           ? fyFiltered
-          : fyFiltered.filter(function (x) { return x.month === state.dashMonth; });
+          : fyFiltered.filter(function (x) { return getEntryMonth(x) === targetMo; });
 
         var totalSales = 0, totalComm = 0, totalProduct = 0, totalPo = 0, totalGst = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0;
         filtered.forEach(function (x) {
@@ -2132,22 +2211,23 @@
         var repMap = {};
         var repList = [];
         state.salesPersons.forEach(function (sp) {
-          if (sp.active !== false || filtered.some(function (x) { return x.salesPerson === sp.code; })) {
+          if (sp.active !== false || filtered.some(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); })) {
             repMap[sp.code] = sp;
             repList.push(sp);
           }
         });
         filtered.forEach(function (x) {
-          if (x.salesPerson && !repMap[x.salesPerson]) {
-            var extra = { code: x.salesPerson, name: x.salesPerson, active: false };
-            repMap[x.salesPerson] = extra;
+          var repCode = String(x.salesPerson || '').trim();
+          if (repCode && !repMap[repCode]) {
+            var extra = { code: repCode, name: repCode, active: false };
+            repMap[repCode] = extra;
             repList.push(extra);
           }
         });
 
         var tbody = $('salesPersonTable');
         tbody.innerHTML = repList.map(function (sp) {
-          var rows = filtered.filter(function (x) { return x.salesPerson === sp.code; });
+          var rows = filtered.filter(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); });
           var sVal = rows.reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
           var cVal = rows.reduce(function (a, b) { return a + toNum(b.totalCommission); }, 0);
           var pVal = rows.filter(function (x) { return x.paymentStatus !== 'RCD'; }).reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
@@ -2173,11 +2253,11 @@
         });
         var monthlyTotals = FY_MONTHS.map(function (mo) {
           return fyFiltered
-            .filter(function (x) { return x.month === mo; })
+            .filter(function (x) { return getEntryMonth(x) === mo; })
             .reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
         });
         var barColors = FY_MONTHS.map(function (mo) {
-          return (state.dashMonth === mo) ? '#059669' : '#1e3a8a';
+          return (targetMo === mo) ? '#059669' : '#1e3a8a';
         });
 
         var ctx = $('monthlyChart').getContext('2d');
@@ -2201,6 +2281,15 @@
             options: {
               responsive: true,
               maintainAspectRatio: false,
+              onClick: function (evt, elements) {
+                if (elements && elements.length > 0) {
+                  var idx = elements[0].index;
+                  if (idx >= 0 && idx < FY_MONTHS.length) {
+                    state.dashMonth = FY_MONTHS[idx];
+                    renderDashboard();
+                  }
+                }
+              },
               plugins: {
                 legend: { display: false },
                 tooltip: {
@@ -2358,7 +2447,9 @@
           fySet['FY ' + String(f).slice(-2) + '-' + String(f + 1).slice(-2)] = true;
         }
         state.allEntries.forEach(function (e) {
-          if (e.month && e.year) fySet[getFYFromMonthYear(e.month, e.year)] = true;
+          var mo = getEntryMonth(e);
+          var yr = getEntryYear(e);
+          if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
         });
         var fys = Object.keys(fySet).sort();
         var fyHtml = fys.map(function (fy) {
@@ -2424,9 +2515,11 @@
           if (targetProd && (x.productKeyword || '').toUpperCase().trim() !== targetProd) return false;
           if (targetRep && (x.salesPerson || '').toUpperCase().trim() !== targetRep) return false;
 
-          var entryMY = (x.monthYear || (x.month + '-' + x.year)).toUpperCase().trim();
-          var entryFY = getFYFromMonthYear(x.month, x.year);
-          var entryQtr = getQuarterFromMonth(x.month);
+          var entryMo = getEntryMonth(x);
+          var entryYr = getEntryYear(x);
+          var entryMY = (entryMo && entryYr) ? (entryMo + '-' + entryYr) : (x.monthYear || '').toUpperCase().trim();
+          var entryFY = getFYFromMonthYear(entryMo, entryYr);
+          var entryQtr = getQuarterFromMonth(entryMo);
 
           if (pt === 'MONTH') {
             return entryMY === targetMY;
@@ -2743,6 +2836,16 @@
       registerPwa();
       setupPwaInstallButton();
       updateConnectionStatus();
+
+      window.rkSalesApp = {
+        getEntryMonth: getEntryMonth,
+        getEntryYear: getEntryYear,
+        normalizeEntry: normalizeEntry,
+        getFYFromMonthYear: getFYFromMonthYear,
+        renderDashboard: renderDashboard,
+        applyDashboardPayload: applyDashboardPayload,
+        state: state
+      };
     })();
   </script>
 </body>

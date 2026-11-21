@@ -115,6 +115,7 @@ function onOpen() {
     .createMenu('RK Sales')
     .addItem('Set up sheets', 'setupRKSalesSheets')
     .addItem('Show web app link', 'showWebAppLink')
+    .addItem('Refresh sheet formatting (All tabs)', 'applyFormattingToAllSheets')
     .addSeparator()
     .addItem('Send monthly email report now', 'sendAutomatedMonthlyEmailReport')
     .addItem('Setup automated monthly email trigger (1st of month)', 'setupMonthlyEmailTrigger')
@@ -440,6 +441,7 @@ function setupRKSalesSheets() {
 function styleDataSheet_(sh) {
   sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold').setBackground('#fff2cc');
   sh.setFrozenRows(1);
+  sh.getRange('B:B').setNumberFormat('@');
   sh.getRange('G:G').setNumberFormat('dd-mm-yyyy');
   sh.getRange('I:I').setNumberFormat('dd-mm-yyyy');
   sh.getRange('K:K').setNumberFormat('dd-mm-yyyy');
@@ -465,62 +467,83 @@ function applyDataConditionalFormatting_(sh) {
   // Conditional formatting is unavailable in the Node test mocks.
   if (!SpreadsheetApp.newConditionalFormatRule || !sh.getRange) return;
 
-  var dataRange = sh.getRange('A2:AF');
-  var remarkRange = sh.getRange('AA2:AA');
+  var serialRange = sh.getRange('A2:A');
+  var partyRange = sh.getRange('D2:D');
+  var invoiceRange = sh.getRange('J2:J');
   var commissionTypeRange = sh.getRange('S2:S');
   var commissionPctRange = sh.getRange('T2:T');
-  var totalCommissionRange = sh.getRange('W2:W');
-  var revisitSerialRange = sh.getRange('A2:A');
+  var commissionFixedRange = sh.getRange('U2:U');
+  var commissionValueRange = sh.getRange('V2:V');
+  var remarkRange = sh.getRange('AA2:AA');
+
   var rules = [
+    // 1. Need to Revisit / Commission Doubt flagged: Light Pink background (#F8BBD0) on Sr. No. (Column A)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$AC2="YES"')
-      .setBackground('#fef3c7')
-      .setFontColor('#92400e')
-      .setRanges([dataRange])
+      .whenFormulaSatisfied('=OR($AC2="YES",$AC2=TRUE)')
+      .setBackground('#F8BBD0')
+      .setRanges([serialRange])
       .build(),
+
+    // 2. Open PO: Invoice value (Invoice No) not filled: Light Green background (#D9EAD3) on Party Name (Column D) & Invoice No (Column J)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$Y2="RCD"')
-      .setBackground('#ecfdf5')
-      .setFontColor('#166534')
-      .setRanges([dataRange])
+      .whenFormulaSatisfied('=AND($A2<>"",$J2="")')
+      .setBackground('#D9EAD3')
+      .setRanges([partyRange, invoiceRange])
       .build(),
+
+    // 3. Commission % other than 5%: Yellow background (#FFF59D) on Commission % (Column T) & Commission Value % (Column V)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$Y2="PENDING"')
-      .setBackground('#fffbeb')
-      .setFontColor('#92400e')
-      .setRanges([dataRange])
+      .whenFormulaSatisfied('=AND($T2<>"",$S2<>"F",ROUND($T2,4)<>0.05)')
+      .setBackground('#FFF59D')
+      .setRanges([commissionPctRange, commissionValueRange])
       .build(),
+
+    // 4. Commission Type is F or P + F: Yellow background (#FFF59D) on Commission Type (Column S) & Commission Fixed (Column U)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$Y2="PARTIAL"')
-      .setBackground('#eff6ff')
-      .setFontColor('#1e40af')
-      .setRanges([dataRange])
+      .whenFormulaSatisfied('=OR($S2="F",$S2="P + F")')
+      .setBackground('#FFF59D')
+      .setRanges([commissionTypeRange, commissionFixedRange])
       .build(),
+
+    // 5. WB/Billing is WB: Blue text color (#1565C0) on Remark (Column AA)
     SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=$Z2="WB"')
-      .setFontColor('#dc2626')
+      .setFontColor('#1565C0')
       .setRanges([remarkRange])
-      .build(),
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=OR($S2="P + F",$S2="F")')
-      .setBackground('#fef3c7')
-      .setFontColor('#92400e')
-      .setRanges([commissionTypeRange])
-      .build(),
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=OR($S2="P + F",$S2="F")')
-      .setBackground('#fef3c7')
-      .setFontColor('#92400e')
-      .setRanges([commissionPctRange, totalCommissionRange])
-      .build(),
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$AC2="YES"')
-      .setBackground('#fef08a')
-      .setFontColor('#854d0e')
-      .setRanges([revisitSerialRange])
       .build()
   ];
-  sh.setConditionalFormatRules(rules);
+  if (typeof sh.setConditionalFormatRules === 'function') {
+    sh.setConditionalFormatRules(rules);
+  }
+}
+
+/**
+ * Applies the cell-level conditional formatting rules consistently across
+ * All Entries and all monthly (MMM-YYYY) tabs.
+ */
+function applyFormattingToAllSheets() {
+  var ss = getSS_();
+  var all = ss.getSheetByName('All Entries');
+  if (all) {
+    ensureDataSheetSchema_(all);
+    styleDataSheet_(all);
+  }
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    if (parseMonthTabKey_(sh.getName()) !== null || FY_MONTHS.indexOf(sh.getName()) !== -1) {
+      ensureDataSheetSchema_(sh);
+      styleDataSheet_(sh);
+    }
+  }
+  try {
+    SpreadsheetApp.getUi().alert(
+      'Formatting Updated',
+      'Applied cell-level conditional formatting to All Entries and all monthly tabs successfully.',
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (e) {}
+  return true;
 }
 
 function normalizeMonthYear_(payload) {
@@ -713,7 +736,7 @@ function buildDashboardData_(ss, all) {
     for (var i = 0; i < vals.length; i++) {
       var r = vals[i];
       if (!r[0] && !r[3]) continue;
-      var parsed = parseMonthYearFields_(String(r[1] || '').toUpperCase().trim());
+      var parsed = parseMonthYearFields_(r[1], r[6]);
       records.push({
         srNo: Number(r[0]) || (i + 1),
         monthYear: parsed.monthYear,
@@ -762,18 +785,100 @@ function buildDashboardData_(ss, all) {
   };
 }
 
-function parseMonthYearFields_(raw) {
-  var m = String(raw || '').toUpperCase().match(/^([A-Z]{3})-(\d{4})$/);
-  if (m) return { monthYear: m[1] + '-' + m[2], month: m[1], year: m[2] };
-  var yr = String(new Date().getFullYear());
-  if (CAL_MONTHS.indexOf(raw) !== -1) return { monthYear: raw + '-' + yr, month: raw, year: yr };
-  return { monthYear: raw, month: raw, year: '' };
+var FULL_MONTH_NAMES_ = {
+  'JANUARY': 'JAN', 'FEBRUARY': 'FEB', 'MARCH': 'MAR', 'APRIL': 'APR',
+  'MAY': 'MAY', 'JUNE': 'JUN', 'JULY': 'JUL', 'AUGUST': 'AUG',
+  'SEPTEMBER': 'SEP', 'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
+};
+
+function parseMonthYearFields_(raw, fallbackDate) {
+  // 1. Native Date object (e.g. from Google Sheets getValues())
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    var dMo = CAL_MONTHS[raw.getMonth()];
+    var dYr = String(raw.getFullYear());
+    return { monthYear: dMo + '-' + dYr, month: dMo, year: dYr };
+  }
+
+  var curYr = String(new Date().getFullYear());
+
+  if (raw !== null && raw !== undefined) {
+    var str = String(raw).trim();
+
+    // 2. Direct match for MMM-YYYY (e.g. "NOV-2026")
+    var m1 = str.toUpperCase().match(/^([A-Z]{3})-(\d{4})$/);
+    if (m1 && CAL_MONTHS.indexOf(m1[1]) !== -1) {
+      return { monthYear: m1[1] + '-' + m1[2], month: m1[1], year: m1[2] };
+    }
+
+    // 3. Match MMM-YY (e.g. "NOV-26")
+    var m2 = str.toUpperCase().match(/^([A-Z]{3})-(\d{2})$/);
+    if (m2 && CAL_MONTHS.indexOf(m2[1]) !== -1) {
+      var fullYr = '20' + m2[2];
+      return { monthYear: m2[1] + '-' + fullYr, month: m2[1], year: fullYr };
+    }
+
+    // 4. Match with space, slash, or underscore (e.g. "NOV 2026", "NOV/2026", "NOV_2026")
+    var m3 = str.toUpperCase().match(/^([A-Z]{3})[\s/_]+(\d{2,4})$/);
+    if (m3 && CAL_MONTHS.indexOf(m3[1]) !== -1) {
+      var yr3 = m3[2].length === 2 ? ('20' + m3[2]) : m3[2];
+      return { monthYear: m3[1] + '-' + yr3, month: m3[1], year: yr3 };
+    }
+
+    // 5. Match standalone 3-letter month (e.g. "NOV")
+    var sUpper = str.toUpperCase();
+    if (CAL_MONTHS.indexOf(sUpper) !== -1) {
+      return { monthYear: sUpper + '-' + curYr, month: sUpper, year: curYr };
+    }
+
+    // 6. Match full month name with or without year (e.g. "NOVEMBER 2026", "NOVEMBER-2026", "NOVEMBER")
+    for (var fName in FULL_MONTH_NAMES_) {
+      if (sUpper.indexOf(fName) !== -1) {
+        var code = FULL_MONTH_NAMES_[fName];
+        var yMatch = sUpper.match(/(\d{4})/) || sUpper.match(/[-/\s](\d{2})$/);
+        var fYr = yMatch ? (yMatch[1].length === 2 ? ('20' + yMatch[1]) : yMatch[1]) : curYr;
+        return { monthYear: code + '-' + fYr, month: code, year: fYr };
+      }
+    }
+
+    // 7. Try parsing str as Date (e.g. "Sun Nov 01 2026...", "2026-11-01", "01/11/2026")
+    if (str.length >= 8) {
+      var parsedDate = new Date(str);
+      if (!isNaN(parsedDate.getTime())) {
+        var pMo = CAL_MONTHS[parsedDate.getMonth()];
+        var pYr = String(parsedDate.getFullYear());
+        if (pMo && pYr && pYr.length === 4) {
+          return { monthYear: pMo + '-' + pYr, month: pMo, year: pYr };
+        }
+      }
+    }
+  }
+
+  // 8. Fallback to fallbackDate (e.g. poDate from r[6]) if provided
+  if (fallbackDate) {
+    var fDate = (fallbackDate instanceof Date && !isNaN(fallbackDate.getTime())) ? fallbackDate : new Date(fallbackDate);
+    if (!isNaN(fDate.getTime())) {
+      var fbMo = CAL_MONTHS[fDate.getMonth()];
+      var fbYr = String(fDate.getFullYear());
+      if (fbMo && fbYr) {
+        return { monthYear: fbMo + '-' + fbYr, month: fbMo, year: fbYr };
+      }
+    }
+  }
+
+  return { monthYear: String(raw || ''), month: String(raw || ''), year: '' };
 }
 
 function upsert_(sh, rowNum, row) {
   var targetRow = rowNum ? rowNum : sh.getLastRow() + 1;
-  if (rowNum) sh.getRange(rowNum, 1, 1, row.length).setValues([row]);
-  else sh.getRange(targetRow, 1, 1, row.length).setValues([row]);
+  var rowRange = sh.getRange(targetRow, 1, 1, row.length);
+
+  // Clear any existing manual/direct background or text color overrides so conditional formatting governs
+  try {
+    if (typeof rowRange.setBackground === 'function') rowRange.setBackground(null);
+    if (typeof rowRange.setFontColor === 'function') rowRange.setFontColor('#000000');
+  } catch (fmtErr) {}
+
+  rowRange.setValues([row]);
 
   try {
     sh.getRange(targetRow, 17).setFormula('=ROUND((O' + targetRow + '+P' + targetRow + ')*0.18, 2)');
@@ -891,7 +996,7 @@ function generateReportData_(ss, filters) {
     for (var i = 0; i < rawVals.length; i++) {
       var r = rawVals[i];
       if (!r[0] && !r[3]) continue;
-      var parsed = parseMonthYearFields_(String(r[1] || '').toUpperCase().trim());
+      var parsed = parseMonthYearFields_(r[1], r[6]);
       var fy = getFYFromMonthYear_(parsed.month, parsed.year);
       var qtr = getQuarterFromMonth_(parsed.month);
 

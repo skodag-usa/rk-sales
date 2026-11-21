@@ -23,7 +23,7 @@ const requiredIds = [
   'changePinModal', 'changePinTargetUser', 'currentPinInput', 'newPinInput',
   'confirmPinInput', 'saveNewPinBtn', 'toast',
   // New suggestions & backup elements
-  'partyList', 'revisitCheckbox', 'backupDataBtn', 'prodKeywordPills', 'kpiPoVal', 'kpiSalesVal',
+  'partyList', 'revisitCheckbox', 'backupDataBtn', 'prodKeywordPills', 'kpiPoVal', 'kpiSalesVal', 'kpiEntries',
   // Email Report elements
   'openEmailReportBtn', 'emailReportModal', 'closeEmailReportBtn',
   'emailPeriodPills', 'emailMonthGroup', 'emailMonthSelect', 'emailYearSelect',
@@ -64,6 +64,7 @@ class MockElement {
     this.textContent = '';
     this.innerHTML = '';
     this.className = '';
+    this.dataset = {};
     this.classList = {
       classes: new Set(),
       add: (c) => this.classList.classes.add(c),
@@ -119,20 +120,61 @@ const mockLocalStorage = {
 
 const domSandbox = {
   document: {
-    getElementById: (id) => elements[id] || new MockElement(id),
+    getElementById: (id) => {
+      if (!elements[id]) elements[id] = new MockElement(id);
+      return elements[id];
+    },
     querySelectorAll: (sel) => [],
-    createElement: (tag) => new MockElement('', tag)
+    createElement: (tag) => new MockElement('', tag),
+    addEventListener: () => {}
   },
   window: {
     location: { search: '' },
-    scrollTo: () => {}
+    scrollTo: () => {},
+    addEventListener: () => {},
+    matchMedia: () => ({ matches: false })
   },
+  navigator: { onLine: true },
   localStorage: mockLocalStorage,
   sessionStorage: mockLocalStorage,
   setTimeout: (fn) => setTimeout(fn, 10),
   clearTimeout: () => {},
   console: console
 };
+
+vm.runInNewContext(jsCode, domSandbox);
+
+// Test 4: Verify month normalization and dashboard filtering
+console.log('Test 4: Verifying month normalization and November dashboard filtering...');
+const app = domSandbox.window.rkSalesApp;
+assert.ok(app, 'window.rkSalesApp must be defined');
+assert.strictEqual(app.state.dashMonth, 'NOV', 'Dashboard must default to current month (per month only) instead of ALL');
+assert.strictEqual(app.getEntryMonth({ month: 'November' }), 'NOV');
+assert.strictEqual(app.getEntryMonth({ month: 'nov' }), 'NOV');
+assert.strictEqual(app.getEntryMonth({ monthYear: 'NOV-2026' }), 'NOV');
+assert.strictEqual(app.getEntryMonth({ month: 'Sun Nov 01 2026 00:00:00 GMT+0530' }), 'NOV');
+assert.strictEqual(app.getEntryYear({ monthYear: 'NOV-2026' }), '2026');
+assert.strictEqual(app.getFYFromMonthYear('NOV', '2026'), 'FY 26-27');
+
+// Simulate applyDashboardPayload with mixed-format entries
+app.applyDashboardPayload({
+  salesPersons: [{ code: 'TK', name: 'Trupti Kodag', active: true, role: 'SALES' }],
+  allEntries: [
+    { srNo: 1, month: 'Sun Nov 01 2026 00:00:00 GMT+0530', monthYear: 'Sun Nov 01 2026...', salesPerson: 'TK', poValue: 50000, productValue: 40000, totalValue: 47200, paymentStatus: 'RCD' },
+    { srNo: 2, month: 'NOV', year: '2026', monthYear: 'NOV-2026', salesPerson: 'TK', poValue: 30000, productValue: 25000, totalValue: 29500, paymentStatus: 'PENDING' },
+    { srNo: 3, month: 'OCT', year: '2026', monthYear: 'OCT-2026', salesPerson: 'TK', poValue: 20000, productValue: 18000, totalValue: 21240, paymentStatus: 'RCD' }
+  ]
+});
+
+// Switch to November on Dashboard
+app.state.dashFY = 'FY 26-27';
+app.state.dashMonth = 'NOV';
+app.renderDashboard();
+
+// Verify November entries are filtered and loaded (2 out of 3 entries)
+const kpiEntriesText = elements['kpiEntries'].textContent;
+assert.ok(kpiEntriesText.includes('2 entries'), 'November dashboard must show 2 entries, got: ' + kpiEntriesText);
+console.log('✓ November dashboard filtering passed.');
 
 // Verify role behavior
 console.log('✓ Headless DOM simulation verified.');
