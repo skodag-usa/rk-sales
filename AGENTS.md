@@ -40,7 +40,8 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
 - `Index.html`: `IS_LIVE_GAS = typeof google !== 'undefined' && google.script && google.script.run`.
 - Preview mode stores entries in `localStorage` (`rk_sales_multiyear_preview_v2`) and users in `rk_sales_preview_users_v3`; live mode calls `google.script.run`.
 - The app is offline-first: when live Apps Script is unreachable/offline, saves go to local storage and `rk_sales_pending_sync_v1`; the Sync button (and the browser `online` event) replays queued `saveEntry` calls, then refreshes Sheets.
-- PWA assets are served by `Code.gs` query routes `?pwa=manifest` and `?pwa=sw`; deploy the latest `Code.gs` and `Index.html` together so install/offline caching works.
+- PWA assets are served by `Code.gs` query routes `?pwa=manifest` and `?pwa=sw`; the manifest start URL is the deployed `/exec` URL. Deploy `Code.gs` and `Index.html` together; uninstall/reinstall an existing PWA after changing the start URL.
+- Offline login requires each user to have logged in successfully once online; cached credentials use `rk_sales_offline_auth_v1`.
 
 ## Email reporting
 
@@ -54,7 +55,7 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
 - Nightly backup runs at 1:00 AM (`setupNightlyBackupTrigger()` / `removeNightlyBackupTrigger()`).
 - Copies Master spreadsheet to Google Drive folder `"RK Sales Backups"` named `RK_Sales_Backup_yyyy-MM-dd_HHmm`.
 - Enforces 30-day retention by automatically purging backup files older than 30 days.
-- Admin can also trigger manual backup on-demand via web app button (`#backupDataBtn`) or `RK Sales Menu` → `Backup Data Now`.
+- Admin can also trigger manual backup on-demand via `#backupDataBtn` (`triggerManualBackup`) or the spreadsheet menu item `Create data backup now`.
 
 ## Gotchas
 

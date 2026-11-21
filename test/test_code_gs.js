@@ -365,6 +365,55 @@ assert.strictEqual(adminEditRes.ok, true);
 assert.strictEqual(adminEditRes.isEdit, true);
 console.log('✓ saveEntry authorization checks passed (Sales restricted, Admin unrestricted).');
 
+// Test 8: applyDataConditionalFormatting_ rules verification
+console.log('Test 8: applyDataConditionalFormatting_ rules verification...');
+const appliedRules = [];
+class MockConditionalFormatRuleBuilder {
+  constructor() {
+    this.rule = { formula: '', bg: '', color: '', ranges: [] };
+  }
+  whenFormulaSatisfied(f) { this.rule.formula = f; return this; }
+  setBackground(b) { this.rule.bg = b; return this; }
+  setFontColor(c) { this.rule.color = c; return this; }
+  setRanges(r) { this.rule.ranges = r; return this; }
+  build() { return this.rule; }
+}
+
+sandbox.SpreadsheetApp.newConditionalFormatRule = () => new MockConditionalFormatRuleBuilder();
+const testSheet = mockSS.getSheetByName('All Entries') || mockSS.insertSheet('All Entries');
+testSheet.setConditionalFormatRules = (r) => { appliedRules.push(...r); };
+
+sandbox.applyDataConditionalFormatting_(testSheet);
+
+assert.ok(appliedRules.length >= 5, 'Must have at least 5 conditional format rules');
+
+// 1. Trupti doubt tick: Sr No in Light Pink (#fce7f3)
+const pinkRule = appliedRules.find(r => r.formula === '=$AC2="YES"');
+assert.ok(pinkRule, 'Must have rule for Trupti doubt flag ($AC2="YES")');
+assert.strictEqual(pinkRule.bg, '#fce7f3', 'Sr No doubt background must be light pink #fce7f3');
+
+// 2. Open PO: Customer name & Invoice cell in Light Green (#dcfce7)
+const openPoRule = appliedRules.find(r => r.formula === '=$J2=""');
+assert.ok(openPoRule, 'Must have rule for Open PO ($J2="")');
+assert.strictEqual(openPoRule.bg, '#dcfce7', 'Open PO background must be light green #dcfce7');
+
+// 3. Percentage other than 5%: Yellow (#fef08a)
+const pctRule = appliedRules.find(r => r.formula && r.formula.includes('ROUND($T2,4)<>0.05'));
+assert.ok(pctRule, 'Must have rule for % other than 5%');
+assert.strictEqual(pctRule.bg, '#fef08a', 'Non-5% commission must be yellow #fef08a');
+
+// 4. Commission type F or P + F: Yellow (#fef08a)
+const fixedTypeRule = appliedRules.find(r => r.formula && (r.formula.includes('$S2="P + F"') || r.formula.includes('$S2="F"')));
+assert.ok(fixedTypeRule, 'Must have rule for Commission Type F / P + F');
+assert.strictEqual(fixedTypeRule.bg, '#fef08a', 'Fixed commission type must be yellow #fef08a');
+
+// 5. WB selected: Blue font color (#1d4ed8)
+const wbRule = appliedRules.find(r => r.formula === '=$Z2="WB"');
+assert.ok(wbRule, 'Must have rule for WB remark');
+assert.strictEqual(wbRule.color, '#1d4ed8', 'WB remark font color must be Blue #1d4ed8');
+
+console.log('✓ applyDataConditionalFormatting_ verified all formatting rules.');
+
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');
 console.log('========================================');

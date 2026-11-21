@@ -382,14 +382,23 @@ function setupRKSalesSheets() {
   var all = ss.getSheetByName('All Entries') || ss.insertSheet('All Entries', 2);
   getSalesPersonsInternal_(ss);
 
-  if (all.getLastRow() === 0) styleDataSheet_(all);
+  ensureDataSheetSchema_(all);
+  styleDataSheet_(all);
+  var setupSheets = ss.getSheets();
+  for (var si = 0; si < setupSheets.length; si++) {
+    var setupSheet = setupSheets[si];
+    if (parseMonthTabKey_(setupSheet.getName()) !== null) {
+      ensureDataSheetSchema_(setupSheet);
+      styleDataSheet_(setupSheet);
+    }
+  }
 
   if (dash.getLastRow() === 0) {
     dash.getRange('A1').setValue('RK SALES DASHBOARD (MULTI-YEAR)').setFontSize(16).setFontWeight('bold');
     dash.getRange('A3:B12').setValues([
       ['Total entries', ''],
       ['Total PO Value ₹', ''],
-      ['Total Sales Value (Product Value) ₹', ''],
+      ['Total Product Value (Sales Value) ₹', ''],
       ['Total GST Value ₹', ''],
       ['Total Value (Sales) ₹', ''],
       ['Total Commission Value % ₹', ''],
@@ -406,6 +415,18 @@ function setupRKSalesSheets() {
   }
 
   if (String(dash.getRange('A3').getValue()) === 'Total entries') {
+    dash.getRange('A3:A12').setValues([
+      ['Total entries'],
+      ['Total PO Value ₹'],
+      ['Total Product Value (Sales Value) ₹'],
+      ['Total GST Value ₹'],
+      ['Total Value ₹'],
+      ['Total Commission Value % ₹'],
+      ['Total Commission ₹'],
+      ['Payment pending (entries)'],
+      ['Payment pending ₹'],
+      ['Collected (RCD) ₹']
+    ]);
     dash.getRange('B3:B12').setFormulas(KPI_FORMULAS);
     dash.getRange('A15').setFormula(LAST10_FORMULA);
   }
@@ -427,6 +448,79 @@ function styleDataSheet_(sh) {
   sh.getRange('U:W').setNumberFormat('#,##0.00');
   sh.getRange('AD:AD').setNumberFormat('dd-mm-yyyy hh:mm');
   sh.getRange(1, 1, 1, HEADERS.length).setNumberFormat('@');
+  applyDataConditionalFormatting_(sh);
+}
+
+function ensureDataSheetSchema_(sh) {
+  if (!sh || !sh.getLastColumn) return;
+  var lastColumn = sh.getLastColumn();
+  // Older sheets had no Revisit column. Insert it before Edit Link (column 30).
+  if (lastColumn === HEADERS.length - 1 && sh.insertColumnBefore) {
+    sh.insertColumnBefore(29);
+  }
+  sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+}
+
+function applyDataConditionalFormatting_(sh) {
+  // Conditional formatting is unavailable in the Node test mocks.
+  if (!SpreadsheetApp.newConditionalFormatRule || !sh.getRange) return;
+
+  var dataRange = sh.getRange('A2:AF');
+  var remarkRange = sh.getRange('AA2:AA');
+  var commissionTypeRange = sh.getRange('S2:S');
+  var commissionPctRange = sh.getRange('T2:T');
+  var totalCommissionRange = sh.getRange('W2:W');
+  var revisitSerialRange = sh.getRange('A2:A');
+  var rules = [
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$AC2="YES"')
+      .setBackground('#fef3c7')
+      .setFontColor('#92400e')
+      .setRanges([dataRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$Y2="RCD"')
+      .setBackground('#ecfdf5')
+      .setFontColor('#166534')
+      .setRanges([dataRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$Y2="PENDING"')
+      .setBackground('#fffbeb')
+      .setFontColor('#92400e')
+      .setRanges([dataRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$Y2="PARTIAL"')
+      .setBackground('#eff6ff')
+      .setFontColor('#1e40af')
+      .setRanges([dataRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$Z2="WB"')
+      .setFontColor('#dc2626')
+      .setRanges([remarkRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=OR($S2="P + F",$S2="F")')
+      .setBackground('#fef3c7')
+      .setFontColor('#92400e')
+      .setRanges([commissionTypeRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=OR($S2="P + F",$S2="F")')
+      .setBackground('#fef3c7')
+      .setFontColor('#92400e')
+      .setRanges([commissionPctRange, totalCommissionRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$AC2="YES"')
+      .setBackground('#fef08a')
+      .setFontColor('#854d0e')
+      .setRanges([revisitSerialRange])
+      .build()
+  ];
+  sh.setConditionalFormatRules(rules);
 }
 
 function normalizeMonthYear_(payload) {
@@ -475,12 +569,9 @@ function saveEntry(payload) {
 
     var ss = getSS_();
     var all = ss.getSheetByName('All Entries');
-    if (!all) {
-      all = ss.insertSheet('All Entries');
-      styleDataSheet_(all);
-    } else if (all.getLastRow() === 0) {
-      styleDataSheet_(all);
-    }
+    if (!all) all = ss.insertSheet('All Entries');
+    ensureDataSheetSchema_(all);
+    styleDataSheet_(all);
 
     var monthYear = normalizeMonthYear_(payload);
     var salesPerson = String(payload.salesPerson || '').trim();
@@ -515,9 +606,10 @@ function saveEntry(payload) {
     var fr = toNum_(payload.freightCharges);
     var gst = round2_((pv + fr) * 0.18);
     var totalVal = round2_(pv + fr + gst);
-    var pct = toNum_(String(payload.commissionPct || '').replace('%', '')) / 100;
+    var commissionType = String(payload.commissionType || 'P').trim().toUpperCase();
+    var pct = commissionType === 'F' ? 0 : toNum_(String(payload.commissionPct || '').replace('%', '')) / 100;
     var commVal = round2_(pv * pct);
-    var commFix = toNum_(payload.commissionFixed);
+    var commFix = commissionType === 'P' ? 0 : toNum_(payload.commissionFixed);
     var totalComm = round2_(commVal + commFix);
 
     var requestedId = String(payload.responseId || '').trim();
@@ -562,13 +654,13 @@ function saveEntry(payload) {
       fr,
       gst,
       totalVal,
-      payload.commissionType || '',
+      commissionType,
       pct,
       commFix,
       commVal,
       totalComm,
       payload.paymentTerms || '',
-      payload.paymentStatus || '',
+      payload.paymentStatus || 'PENDING',
       payload.wbBilling || '',
       payload.remark || '',
       payload.accountsRemark || '',
@@ -686,14 +778,18 @@ function upsert_(sh, rowNum, row) {
   try {
     sh.getRange(targetRow, 17).setFormula('=ROUND((O' + targetRow + '+P' + targetRow + ')*0.18, 2)');
     sh.getRange(targetRow, 18).setFormula('=ROUND(O' + targetRow + '+P' + targetRow + '+Q' + targetRow + ', 2)');
-    sh.getRange(targetRow, 22).setFormula('=ROUND(O' + targetRow + '*T' + targetRow + ', 2)');
-    sh.getRange(targetRow, 23).setFormula('=ROUND(V' + targetRow + '+U' + targetRow + ', 2)');
+    sh.getRange(targetRow, 22).setFormula('=IF(OR(S' + targetRow + '="P",S' + targetRow + '="P + F"),ROUND(O' + targetRow + '*T' + targetRow + ', 2),0)');
+    sh.getRange(targetRow, 23).setFormula('=ROUND(V' + targetRow + '+IF(OR(S' + targetRow + '="F",S' + targetRow + '="P + F"),U' + targetRow + ',0), 2)');
   } catch (err) {}
 }
 
 function getMonthSheet_(ss, monthYear) {
   var sh = ss.getSheetByName(monthYear);
-  if (sh) return sh;
+  if (sh) {
+    ensureDataSheetSchema_(sh);
+    styleDataSheet_(sh);
+    return sh;
+  }
 
   var targetKey = parseMonthTabKey_(monthYear);
   var sheets = ss.getSheets();
