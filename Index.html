@@ -384,7 +384,7 @@
           </div>
 
           <!-- Live Calculation Box -->
-          <div class="rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3" id="liveCalcGrid">
             <div>
               <div class="text-[10px] uppercase tracking-wider text-slate-400">GST (18%)</div>
               <div id="calcGst" class="text-sm font-bold text-slate-100 mt-0.5">₹0.00</div>
@@ -393,9 +393,13 @@
               <div class="text-[10px] uppercase tracking-wider text-slate-400">Total Value</div>
               <div id="calcTotal" class="text-sm font-bold text-emerald-400 mt-0.5">₹0.00</div>
             </div>
-            <div>
-              <div class="text-[10px] uppercase tracking-wider text-slate-400">Comm % Val</div>
+            <div id="calcCommPctWrap">
+              <div id="calcCommPctLabel" class="text-[10px] uppercase tracking-wider text-slate-400">Comm % Val</div>
               <div id="calcCommPct" class="text-sm font-bold text-slate-100 mt-0.5">₹0.00</div>
+            </div>
+            <div id="calcCommFixWrap" class="hidden">
+              <div id="calcCommFixLabel" class="text-[10px] uppercase tracking-wider text-amber-400">Comm Fixed</div>
+              <div id="calcCommFix" class="text-sm font-bold text-amber-300 mt-0.5">₹0.00</div>
             </div>
             <div>
               <div class="text-[10px] uppercase tracking-wider text-slate-400">Total Comm</div>
@@ -411,14 +415,17 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1.5">Commission Type *</label>
-              <div id="commTypePills" class="grid grid-cols-3 gap-1.5">
+              <div id="commTypePills" class="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                 <button type="button" data-val="P"
                   class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">P</button>
-                <button type="button" data-val="P + F"
-                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">P
-                  + F</button>
                 <button type="button" data-val="F"
                   class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">F</button>
+                <button type="button" data-val="P + F"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">P + F</button>
+                <button type="button" data-val="P + P"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">P + P</button>
+                <button type="button" data-val="CUSTOM"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Multi / Custom</button>
               </div>
             </div>
 
@@ -434,7 +441,114 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <!-- P + F Split Amounts Section -->
+          <div id="commSplitSection" class="hidden rounded-xl border border-blue-200 bg-blue-50/70 p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-blue-900">P + F Product Value Split</span>
+              <span id="commSplitHint" class="text-[11px] text-blue-700 font-medium">Split sales value into % and Fixed parts</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label for="commPctProductValue" class="block text-[11px] font-semibold text-slate-700 mb-1">Product Value for % (₹)</label>
+                <input id="commPctProductValue" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 200"
+                  class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-blue-600 focus:outline-none" />
+                <p class="text-[10px] text-slate-500 mt-0.5">Amount subject to % commission</p>
+              </div>
+              <div>
+                <label for="commFixedProductValue" class="block text-[11px] font-semibold text-slate-700 mb-1">Product Value for Fixed (₹)</label>
+                <input id="commFixedProductValue" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 100"
+                  class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-blue-600 focus:outline-none" />
+                <p class="text-[10px] text-slate-500 mt-0.5">Amount subject to Fixed commission</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- P + P Dual Percentage Split Section -->
+          <div id="commPPSplitSection" class="hidden rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-indigo-900">P + P Dual Percentage Split</span>
+              <span id="commPPSplitHint" class="text-[11px] text-indigo-700 font-medium">Different % on different amounts</span>
+            </div>
+            <!-- Part 1 -->
+            <div class="rounded-lg bg-white border border-indigo-100 p-2.5 space-y-2">
+              <div class="text-[11px] font-bold text-indigo-800 uppercase tracking-wide">Part 1 (% Commission)</div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label for="commP1ProductValue" class="block text-[11px] font-semibold text-slate-700 mb-1">Product Value 1 (₹)</label>
+                  <input id="commP1ProductValue" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 200"
+                    class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-600 focus:outline-none" />
+                </div>
+                <div>
+                  <label for="commP1Pct" class="block text-[11px] font-semibold text-slate-700 mb-1">Commission 1 (%)</label>
+                  <div class="flex items-center gap-1.5">
+                    <input id="commP1Pct" type="number" inputmode="decimal" step="0.1" min="0" placeholder="5" value="5"
+                      class="w-20 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-600 focus:outline-none" />
+                    <div id="commP1Pills" class="flex gap-1">
+                      <button type="button" data-val="5" class="pp-p1-btn active px-2 py-1 rounded border border-indigo-600 bg-indigo-50 text-indigo-700 text-xs font-semibold">5%</button>
+                      <button type="button" data-val="2.5" class="pp-p1-btn px-2 py-1 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold">2.5%</button>
+                      <button type="button" data-val="0" class="pp-p1-btn px-2 py-1 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold">0%</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Part 2 -->
+            <div class="rounded-lg bg-white border border-indigo-100 p-2.5 space-y-2">
+              <div class="text-[11px] font-bold text-indigo-800 uppercase tracking-wide">Part 2 (% Commission)</div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label for="commP2ProductValue" class="block text-[11px] font-semibold text-slate-700 mb-1">Product Value 2 (₹)</label>
+                  <input id="commP2ProductValue" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 100"
+                    class="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-600 focus:outline-none" />
+                </div>
+                <div>
+                  <label for="commP2Pct" class="block text-[11px] font-semibold text-slate-700 mb-1">Commission 2 (%)</label>
+                  <div class="flex items-center gap-1.5">
+                    <input id="commP2Pct" type="number" inputmode="decimal" step="0.1" min="0" placeholder="2.5" value="2.5"
+                      class="w-20 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-600 focus:outline-none" />
+                    <div id="commP2Pills" class="flex gap-1">
+                      <button type="button" data-val="5" class="pp-p2-btn px-2 py-1 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold">5%</button>
+                      <button type="button" data-val="2.5" class="pp-p2-btn active px-2 py-1 rounded border border-indigo-600 bg-indigo-50 text-indigo-700 text-xs font-semibold">2.5%</button>
+                      <button type="button" data-val="0" class="pp-p2-btn px-2 py-1 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold">0%</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Part Commission Section (supports up to 4 P and up to 4 F) -->
+          <div id="commMultiSection" class="hidden rounded-xl border border-indigo-200 bg-indigo-50/70 p-3.5 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-indigo-900">Multi-Commission Split</span>
+                <span id="commMultiComboBadge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-600 text-white shadow-sm">P + P + P + F</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button type="button" id="commAddPBtn" class="px-2.5 py-1 rounded-lg border border-indigo-600 bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-semibold shadow-sm flex items-center gap-1">
+                  <span>+ Add % (P)</span>
+                  <span id="commPCountBadge" class="text-[10px] text-indigo-500 font-normal">(0/4)</span>
+                </button>
+                <button type="button" id="commAddFBtn" class="px-2.5 py-1 rounded-lg border border-amber-600 bg-white text-amber-800 hover:bg-amber-50 text-xs font-semibold shadow-sm flex items-center gap-1">
+                  <span>+ Add Fixed (F)</span>
+                  <span id="commFCountBadge" class="text-[10px] text-amber-600 font-normal">(0/4)</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Allocation Helper Bar -->
+            <div id="commAllocBar" class="flex items-center justify-between text-[11px] rounded-lg bg-white/90 border border-indigo-100 px-3 py-1.5 shadow-xs">
+              <span class="text-slate-600">Product Value Allocation:</span>
+              <span id="commAllocText" class="font-semibold text-slate-800">Allocated: ₹0 / ₹0</span>
+            </div>
+
+            <!-- Dynamic parts container -->
+            <div id="commPartsContainer" class="space-y-2.5">
+              <!-- Dynamically populated or rendered part rows -->
+            </div>
+          </div>
+
+          <div id="standardCommSection" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1.5">Commission %</label>
               <div id="commPctPills" class="grid grid-cols-4 gap-1.5">
@@ -1637,7 +1751,8 @@
         forceOffline: false,
         isSyncing: false,
         loadedFys: {},
-        pendingCount: 0
+        pendingCount: 0,
+        multiParts: []
       };
 
       try {
@@ -1764,14 +1879,118 @@
         }).join('');
       }
 
+      function renderMultiParts() {
+        var container = $('commPartsContainer');
+        if (!container) return;
+        if (!Array.isArray(state.multiParts)) state.multiParts = [];
+
+        var pCount = state.multiParts.filter(function (p) { return p.type === 'P'; }).length;
+        var fCount = state.multiParts.filter(function (p) { return p.type === 'F'; }).length;
+
+        var addPBtn = $('commAddPBtn');
+        if (addPBtn) {
+          addPBtn.disabled = pCount >= 4;
+          addPBtn.classList.toggle('opacity-50', pCount >= 4);
+          addPBtn.classList.toggle('cursor-not-allowed', pCount >= 4);
+        }
+        var addFBtn = $('commAddFBtn');
+        if (addFBtn) {
+          addFBtn.disabled = fCount >= 4;
+          addFBtn.classList.toggle('opacity-50', fCount >= 4);
+          addFBtn.classList.toggle('cursor-not-allowed', fCount >= 4);
+        }
+
+        var pBadge = $('commPCountBadge');
+        if (pBadge) pBadge.textContent = '(' + pCount + '/4)';
+        var fBadge = $('commFCountBadge');
+        if (fBadge) fBadge.textContent = '(' + fCount + '/4)';
+
+        var comboParts = [];
+        state.multiParts.forEach(function (p) { comboParts.push(p.type); });
+        var comboName = comboParts.join(' + ') || 'CUSTOM';
+        var badge = $('commMultiComboBadge');
+        if (badge) badge.textContent = comboName;
+        if (state.selectedCommType === 'CUSTOM' || (state.selectedCommType && state.selectedCommType.indexOf('+') !== -1 && state.selectedCommType !== 'P + F' && state.selectedCommType !== 'P + P')) {
+          state.selectedCommType = comboName;
+        }
+
+        var pIdx = 0;
+        var fIdx = 0;
+        var html = '';
+        state.multiParts.forEach(function (part, idx) {
+          var isP = (part.type === 'P');
+          if (isP) pIdx++; else fIdx++;
+          var partNum = isP ? ('P' + pIdx) : ('F' + fIdx);
+          var partTitle = isP ? ('Percentage Part ' + pIdx) : ('Fixed Part ' + fIdx);
+          var partPv = toNum(part.pv);
+          var partComm = isP ? Math.round(partPv * (toNum(part.rate) / 100) * 100) / 100 : toNum(part.rate);
+          var borderCol = isP ? 'border-indigo-200' : 'border-amber-200';
+          var badgeCol = isP ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-800';
+
+          html += '<div class="rounded-lg bg-white border ' + borderCol + ' p-2.5 shadow-xs space-y-1.5" data-part-idx="' + idx + '">';
+          html += '  <div class="flex items-center justify-between text-xs">';
+          html += '    <div class="flex items-center gap-1.5 font-bold ' + (isP ? 'text-indigo-900' : 'text-amber-900') + '">';
+          html += '      <span class="px-1.5 py-0.5 rounded ' + badgeCol + ' text-[10px]">' + partNum + '</span>';
+          html += '      <span>' + partTitle + '</span>';
+          html += '    </div>';
+          html += '    <div class="flex items-center gap-2">';
+          html += '      <span class="text-[11px] font-semibold text-emerald-700">₹' + partComm.toFixed(2) + ' Comm</span>';
+          html += '      <button type="button" data-remove-part="' + idx + '" class="text-slate-400 hover:text-rose-600 font-bold px-1 text-sm transition-colors" title="Remove part">✕</button>';
+          html += '    </div>';
+          html += '  </div>';
+          html += '  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">';
+          html += '    <div>';
+          html += '      <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Product Value (₹)</label>';
+          html += '      <input type="number" inputmode="decimal" data-part-pv="' + idx + '" step="0.01" min="0" value="' + (part.pv !== undefined && part.pv !== '' ? part.pv : '') + '" placeholder="e.g. 100" class="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-indigo-600 focus:outline-none" />';
+          html += '    </div>';
+          html += '    <div>';
+          if (isP) {
+            html += '      <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Commission (%)</label>';
+            html += '      <div class="flex items-center gap-1">';
+            html += '        <input type="number" inputmode="decimal" data-part-rate="' + idx + '" step="0.1" min="0" value="' + (part.rate !== undefined && part.rate !== '' ? part.rate : '5') + '" placeholder="5" class="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-indigo-600 focus:outline-none" />';
+            html += '        <div class="flex gap-1">';
+            var r5 = (part.rate == 5) ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-white border-slate-300 text-slate-600';
+            var r25 = (part.rate == 2.5) ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-white border-slate-300 text-slate-600';
+            var r0 = (part.rate == 0) ? 'bg-indigo-50 border-indigo-600 text-indigo-700' : 'bg-white border-slate-300 text-slate-600';
+            html += '          <button type="button" data-part-rate-pill="' + idx + '" data-val="5" class="px-1.5 py-0.5 rounded text-[10px] font-semibold border ' + r5 + '">5%</button>';
+            html += '          <button type="button" data-part-rate-pill="' + idx + '" data-val="2.5" class="px-1.5 py-0.5 rounded text-[10px] font-semibold border ' + r25 + '">2.5%</button>';
+            html += '          <button type="button" data-part-rate-pill="' + idx + '" data-val="0" class="px-1.5 py-0.5 rounded text-[10px] font-semibold border ' + r0 + '">0%</button>';
+            html += '        </div>';
+            html += '      </div>';
+          } else {
+            html += '      <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Fixed Commission Amount (₹)</label>';
+            html += '      <input type="number" inputmode="decimal" data-part-rate="' + idx + '" step="0.01" min="0" value="' + (part.rate !== undefined && part.rate !== '' ? part.rate : '') + '" placeholder="e.g. 3" class="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-amber-600 focus:outline-none" />';
+          }
+          html += '    </div>';
+          html += '  </div>';
+          html += '</div>';
+        });
+
+        if (state.multiParts.length === 0) {
+          html = '<div class="text-center py-4 text-xs text-indigo-600 bg-white/60 rounded-lg border border-dashed border-indigo-200">No commission parts added yet. Click <b>+ Add % (P)</b> or <b>+ Add Fixed (F)</b> above to build your split (up to 4 P and 4 F).</div>';
+        }
+        container.innerHTML = html;
+        updateLiveCalc();
+      }
+
       function updateCommTypeState(commType) {
         var ct = commType || state.selectedCommType || 'P';
         var pctBox = $('commPctPills');
         var pctButtons = pctBox.querySelectorAll('button[data-val]');
         var customPct = $('commPctOther');
         var fixedInput = $('commissionFixed');
+        var splitSec = $('commSplitSection');
+        var ppSplitSec = $('commPPSplitSection');
+        var multiSec = $('commMultiSection');
+        var stdSec = $('standardCommSection');
+
+        var isMulti = (ct === 'CUSTOM' || (ct.indexOf('+') !== -1 && ct !== 'P + F' && ct !== 'P + P'));
 
         if (ct === 'P') {
+          if (stdSec) stdSec.classList.remove('hidden');
+          if (splitSec) splitSec.classList.add('hidden');
+          if (ppSplitSec) ppSplitSec.classList.add('hidden');
+          if (multiSec) multiSec.classList.add('hidden');
           pctButtons.forEach(function (b) {
             b.disabled = false;
             b.classList.remove('opacity-40', 'cursor-not-allowed');
@@ -1779,7 +1998,18 @@
           fixedInput.disabled = true;
           fixedInput.value = '0';
           fixedInput.classList.add('bg-slate-100', 'cursor-not-allowed');
+        } else if (ct === 'P + P') {
+          if (stdSec) stdSec.classList.add('hidden');
+          if (splitSec) splitSec.classList.add('hidden');
+          if (ppSplitSec) ppSplitSec.classList.remove('hidden');
+          if (multiSec) multiSec.classList.add('hidden');
+          fixedInput.disabled = true;
+          fixedInput.value = '0';
         } else if (ct === 'P + F') {
+          if (stdSec) stdSec.classList.remove('hidden');
+          if (splitSec) splitSec.classList.remove('hidden');
+          if (ppSplitSec) ppSplitSec.classList.add('hidden');
+          if (multiSec) multiSec.classList.add('hidden');
           pctButtons.forEach(function (b) {
             b.disabled = false;
             b.classList.remove('opacity-40', 'cursor-not-allowed');
@@ -1787,6 +2017,10 @@
           fixedInput.disabled = false;
           fixedInput.classList.remove('bg-slate-100', 'cursor-not-allowed');
         } else if (ct === 'F') {
+          if (stdSec) stdSec.classList.remove('hidden');
+          if (splitSec) splitSec.classList.add('hidden');
+          if (ppSplitSec) ppSplitSec.classList.add('hidden');
+          if (multiSec) multiSec.classList.add('hidden');
           pctButtons.forEach(function (b) {
             b.disabled = true;
             b.classList.add('opacity-40', 'cursor-not-allowed');
@@ -1794,6 +2028,36 @@
           customPct.classList.add('hidden');
           fixedInput.disabled = false;
           fixedInput.classList.remove('bg-slate-100', 'cursor-not-allowed');
+        } else if (isMulti) {
+          if (stdSec) stdSec.classList.add('hidden');
+          if (splitSec) splitSec.classList.add('hidden');
+          if (ppSplitSec) ppSplitSec.classList.add('hidden');
+          if (multiSec) multiSec.classList.remove('hidden');
+          fixedInput.disabled = true;
+          if (!Array.isArray(state.multiParts) || state.multiParts.length === 0) {
+            var pv = toNum($('productValue').value);
+            if (ct === 'CUSTOM') {
+              var p1 = pv > 0 ? Math.round(pv * 0.7 * 100) / 100 : '';
+              var p2 = pv > 0 ? Math.max(0, Math.round((pv - p1) * 100) / 100) : '';
+              state.multiParts = [
+                { type: 'P', pv: p1, rate: 5 },
+                { type: 'P', pv: p2, rate: 2.5 }
+              ];
+            } else {
+              var tokens = ct.split('+').map(function (s) { return s.trim().toUpperCase(); });
+              var count = tokens.length;
+              var share = count > 0 && pv > 0 ? Math.round((pv / count) * 100) / 100 : '';
+              state.multiParts = tokens.map(function (tok, idx) {
+                var pShare = idx === count - 1 && pv > 0 ? Math.max(0, Math.round((pv - (share * (count - 1))) * 100) / 100) : share;
+                return {
+                  type: tok === 'F' ? 'F' : 'P',
+                  pv: pShare,
+                  rate: tok === 'F' ? 0 : (idx === 0 ? 5 : 2.5)
+                };
+              });
+            }
+          }
+          renderMultiParts();
         }
         updateLiveCalc();
       }
@@ -1927,12 +2191,10 @@
 
         function verifyAndLogin(cached) {
           var found = (cached || []).find(function (u) {
-            return String(u.code).toUpperCase() === String(code).toUpperCase();
             return String(u.code).toUpperCase() === upperCode;
           });
           if (!found) {
             found = state.salesPersons.find(function (u) {
-              return String(u.code).toUpperCase() === String(code).toUpperCase();
               return String(u.code).toUpperCase() === upperCode;
             });
           }
@@ -1950,47 +2212,46 @@
             clearPin();
             return;
           }
-          if (String(found.pin || '').trim() !== String(pin).trim()) {
 
-            var match = false;
-            var expectedHash = hashPin(found.code, trimmedPin);
-            if (found.pinHash && found.pinHash === expectedHash) {
-              match = true;
-            } else if (found.encryptedPin && decryptPin(found.code, found.encryptedPin) === trimmedPin) {
-              match = true;
-            } else if (found.pin && String(found.pin).trim() === trimmedPin) {
-              match = true;
-              cacheOfflineCredential({ code: found.code, name: found.name, role: found.role, pin: trimmedPin });
-            }
-
-            if (!match) {
-              $('loginError').textContent = 'Incorrect PIN.';
-              $('loginError').classList.remove('hidden');
-              clearPin();
-              return;
-            }
-            var userObj = {
-              code: found.code,
-              name: found.name,
-              role: found.role || 'SALES',
-              pin: trimmedPin
-            };
-            setAuthenticatedUser(userObj);
-            hideLoginModal();
-            showToast('Offline login: welcome, ' + userObj.name + '!');
+          var match = false;
+          var expectedHash = hashPin(found.code, trimmedPin);
+          if (found.pinHash && found.pinHash === expectedHash) {
+            match = true;
+          } else if (found.encryptedPin && decryptPin(found.code, found.encryptedPin) === trimmedPin) {
+            match = true;
+          } else if (found.pin && String(found.pin).trim() === trimmedPin) {
+            match = true;
+            cacheOfflineCredential({ code: found.code, name: found.name, role: found.role, pin: trimmedPin });
           }
 
-          RKSalesDB.getOfflineAuth().then(function (cached) {
-            verifyAndLogin(cached);
-          }).catch(function () {
-            var cached = [];
-            try {
-              var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
-              cached = raw ? JSON.parse(raw) : [];
-            } catch (e) { }
-            verifyAndLogin(cached);
-          });
+          if (!match) {
+            $('loginError').textContent = 'Incorrect PIN.';
+            $('loginError').classList.remove('hidden');
+            clearPin();
+            return;
+          }
+          var userObj = {
+            code: found.code,
+            name: found.name,
+            role: found.role || 'SALES',
+            pin: trimmedPin
+          };
+          setAuthenticatedUser(userObj);
+          hideLoginModal();
+          showToast('Offline login: welcome, ' + userObj.name + '!');
         }
+
+        RKSalesDB.getOfflineAuth().then(function (cached) {
+          verifyAndLogin(cached);
+        }).catch(function () {
+          var cached = [];
+          try {
+            var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+            cached = raw ? JSON.parse(raw) : [];
+          } catch (e) { }
+          verifyAndLogin(cached);
+        });
+      }
 
         function executeLogin(code, pin) {
           if (!code) {
@@ -2268,6 +2529,12 @@
             state[stateKey] = String(val);
             btns.forEach(function (b) { b.classList.toggle('active', b === match); });
             if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
+          } else if (containerId === 'commTypePills') {
+            var customBtn = btns.find(function (b) { return b.getAttribute('data-val') === 'CUSTOM'; });
+            if (customBtn) {
+              state[stateKey] = String(val);
+              btns.forEach(function (b) { b.classList.toggle('active', b === customBtn); });
+            }
           } else if (otherEl && val !== '' && val !== null && val !== undefined) {
             var otherBtn = btns.find(function (b) { return b.getAttribute('data-val') === '__OTHER__'; });
             state[stateKey] = '__OTHER__';
@@ -2291,15 +2558,157 @@
           var fr = toNum($('freightCharges').value);
           var gst = (pv + fr) * 0.18;
           var total = pv + fr + gst;
-          var pct = (state.selectedCommType === 'F') ? 0 : (getEffectiveCommPct() / 100);
-          var commVal = pv * pct;
-          var commFix = (state.selectedCommType === 'P') ? 0 : toNum($('commissionFixed').value);
+          var ct = state.selectedCommType || 'P';
+
+          if (ct === 'P + P') {
+            var p1Val = toNum($('commP1ProductValue').value);
+            var p2Val = toNum($('commP2ProductValue').value);
+            var p1Pct = toNum($('commP1Pct').value);
+            var p2Pct = toNum($('commP2Pct').value);
+
+            var calcP1 = p1Val;
+            var calcP2 = p2Val;
+            if (calcP1 <= 0 && calcP2 <= 0) {
+              calcP1 = pv;
+            } else if (calcP1 > 0 && calcP2 <= 0 && pv > calcP1) {
+              calcP2 = Math.max(0, Math.round((pv - calcP1) * 100) / 100);
+            } else if (calcP2 > 0 && calcP1 <= 0 && pv > calcP2) {
+              calcP1 = Math.max(0, Math.round((pv - calcP2) * 100) / 100);
+            }
+
+            var c1 = Math.round(calcP1 * (p1Pct / 100) * 100) / 100;
+            var c2 = Math.round(calcP2 * (p2Pct / 100) * 100) / 100;
+            var totalComm = Math.round((c1 + c2) * 100) / 100;
+
+            $('calcGst').textContent = fmtINR(gst);
+            $('calcTotal').textContent = fmtINR(total);
+            $('calcCommPct').textContent = fmtINR(c1);
+            $('calcCommFix').textContent = fmtINR(c2);
+            $('calcCommTotal').textContent = fmtINR(totalComm);
+
+            $('calcCommPctWrap').classList.remove('hidden');
+            $('calcCommFixWrap').classList.remove('hidden');
+
+            var pctLabel = $('calcCommPctLabel');
+            if (pctLabel) {
+              pctLabel.textContent = 'Comm 1 (' + p1Pct + '% on ' + fmtINR(calcP1) + ')';
+            }
+            var fixLabel = $('calcCommFixLabel');
+            if (fixLabel) {
+              fixLabel.textContent = 'Comm 2 (' + p2Pct + '% on ' + fmtINR(calcP2) + ')';
+            }
+
+            var grid = $('liveCalcGrid');
+            grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3';
+            return;
+          }
+
+          var isMulti = (ct === 'CUSTOM' || (ct.indexOf('+') !== -1 && ct !== 'P + F' && ct !== 'P + P') || (Array.isArray(state.multiParts) && state.multiParts.length > 0 && $('commMultiSection') && !$('commMultiSection').classList.contains('hidden')));
+
+          if (isMulti && Array.isArray(state.multiParts)) {
+            var totalPComm = 0;
+            var totalFComm = 0;
+            var totalAllocPv = 0;
+
+            state.multiParts.forEach(function (part) {
+              var partPv = toNum(part.pv);
+              totalAllocPv += partPv;
+              if (part.type === 'P') {
+                var c = Math.round(partPv * (toNum(part.rate) / 100) * 100) / 100;
+                totalPComm += c;
+              } else {
+                var f = toNum(part.rate);
+                totalFComm += f;
+              }
+            });
+
+            totalPComm = Math.round(totalPComm * 100) / 100;
+            totalFComm = Math.round(totalFComm * 100) / 100;
+            var grandTotal = Math.round((totalPComm + totalFComm) * 100) / 100;
+
+            var allocEl = $('commAllocText');
+            if (allocEl) {
+              var diff = Math.round((pv - totalAllocPv) * 100) / 100;
+              if (pv > 0) {
+                if (Math.abs(diff) < 0.01) {
+                  allocEl.innerHTML = '<span class="text-emerald-700 font-bold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (100% matched)</span>';
+                } else if (diff > 0) {
+                  allocEl.innerHTML = '<span class="text-amber-700 font-semibold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (' + fmtINR(diff) + ' unallocated)</span>';
+                } else {
+                  allocEl.innerHTML = '<span class="text-rose-700 font-semibold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (' + fmtINR(-diff) + ' over-allocated)</span>';
+                }
+              } else {
+                allocEl.textContent = 'Allocated: ' + fmtINR(totalAllocPv);
+              }
+            }
+
+            $('calcGst').textContent = fmtINR(gst);
+            $('calcTotal').textContent = fmtINR(total);
+            $('calcCommPct').textContent = fmtINR(totalPComm);
+            $('calcCommFix').textContent = fmtINR(totalFComm);
+            $('calcCommTotal').textContent = fmtINR(grandTotal);
+
+            $('calcCommPctWrap').classList.remove('hidden');
+            $('calcCommFixWrap').classList.remove('hidden');
+
+            var pctLabel = $('calcCommPctLabel');
+            if (pctLabel) pctLabel.textContent = 'All % Parts (' + fmtINR(totalPComm) + ')';
+            var fixLabel = $('calcCommFixLabel');
+            if (fixLabel) fixLabel.textContent = 'All Fixed Parts (' + fmtINR(totalFComm) + ')';
+
+            var grid = $('liveCalcGrid');
+            grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3';
+            return;
+          }
+
+          var pct = (ct === 'F') ? 0 : (getEffectiveCommPct() / 100);
+
+          var pctPv = pv;
+          var fixPv = 0;
+          if (ct === 'P + F') {
+            var splitPct = toNum($('commPctProductValue').value);
+            var splitFix = toNum($('commFixedProductValue').value);
+            if (splitPct > 0) {
+              pctPv = splitPct;
+              fixPv = splitFix > 0 ? splitFix : Math.max(0, pv - splitPct);
+            } else if (splitFix > 0) {
+              fixPv = splitFix;
+              pctPv = Math.max(0, pv - splitFix);
+            }
+          }
+
+          var commVal = pctPv * pct;
+          var commFix = (ct === 'P') ? 0 : toNum($('commissionFixed').value);
           var totalComm = commVal + commFix;
 
           $('calcGst').textContent = fmtINR(gst);
           $('calcTotal').textContent = fmtINR(total);
           $('calcCommPct').textContent = fmtINR(commVal);
+          $('calcCommFix').textContent = fmtINR(commFix);
           $('calcCommTotal').textContent = fmtINR(totalComm);
+
+          // Show/hide the individual amount boxes based on commission type
+          var showPct = ct === 'P' || ct === 'P + F';
+          var showFix = ct === 'F' || ct === 'P + F';
+          $('calcCommPctWrap').classList.toggle('hidden', !showPct);
+          $('calcCommFixWrap').classList.toggle('hidden', !showFix);
+
+          var pctLabel = $('calcCommPctLabel');
+          if (pctLabel) {
+            pctLabel.textContent = (ct === 'P + F' && pctPv !== pv && pctPv > 0) ? ('Comm % (' + fmtINR(pctPv) + ')') : 'Comm % Val';
+          }
+          var fixLabel = $('calcCommFixLabel');
+          if (fixLabel) {
+            fixLabel.textContent = (ct === 'P + F' && fixPv > 0) ? ('Fixed (' + fmtINR(fixPv) + ')') : 'Comm Fixed';
+          }
+
+          // Adjust grid: 5 items for P+F, 4 otherwise
+          var grid = $('liveCalcGrid');
+          if (ct === 'P + F') {
+            grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3';
+          } else {
+            grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3';
+          }
         }
 
         // ---------- NAVIGATION ----------
@@ -2344,6 +2753,14 @@
           delete $('productValue').dataset.lastPoVal;
           $('freightCharges').value = '';
           $('commissionFixed').value = '';
+          $('commPctProductValue').value = '';
+          $('commFixedProductValue').value = '';
+          $('commP1ProductValue').value = '';
+          $('commP1Pct').value = '5';
+          $('commP2ProductValue').value = '';
+          $('commP2Pct').value = '2.5';
+          state.multiParts = [];
+          if ($('commPartsContainer')) $('commPartsContainer').innerHTML = '';
           $('remark').value = '';
           $('accountsRemark').value = '';
           $('revisitCheckbox').checked = false;
@@ -2429,6 +2846,77 @@
           updateCommTypeState(entry.commissionType || 'P');
           setPillValue('commPctPills', 'selectedCommPct', String(entry.commissionPct), 'commPctOther');
           $('commissionFixed').value = entry.commissionFixed || '';
+
+          if ((entry.commissionType || 'P') === 'P + F') {
+            var pctPv = entry.commPctProductValue;
+            var fixPv = entry.commFixedProductValue;
+            if (!pctPv && entry.commissionPct > 0 && entry.commissionValuePct > 0) {
+              var calcPctPv = Math.round((entry.commissionValuePct / (entry.commissionPct / 100)) * 100) / 100;
+              if (Math.abs(calcPctPv - toNum(entry.productValue)) > 0.01) {
+                pctPv = calcPctPv;
+                fixPv = Math.max(0, Math.round((toNum(entry.productValue) - pctPv) * 100) / 100);
+              }
+            }
+            $('commPctProductValue').value = pctPv || '';
+            $('commFixedProductValue').value = fixPv || '';
+            $('commP1ProductValue').value = '';
+            $('commP1Pct').value = '5';
+            $('commP2ProductValue').value = '';
+            $('commP2Pct').value = '2.5';
+            state.multiParts = [];
+          } else if ((entry.commissionType || 'P') === 'P + P') {
+            $('commPctProductValue').value = '';
+            $('commFixedProductValue').value = '';
+            $('commP1ProductValue').value = entry.commP1ProductValue || '';
+            $('commP1Pct').value = entry.commP1Pct !== undefined && entry.commP1Pct !== '' ? entry.commP1Pct : (entry.commissionPct || '5');
+            $('commP2ProductValue').value = entry.commP2ProductValue || '';
+            $('commP2Pct').value = entry.commP2Pct !== undefined && entry.commP2Pct !== '' ? entry.commP2Pct : '2.5';
+            state.multiParts = [];
+          } else if (Array.isArray(entry.commissionParts) && entry.commissionParts.length > 0) {
+            $('commPctProductValue').value = '';
+            $('commFixedProductValue').value = '';
+            $('commP1ProductValue').value = '';
+            $('commP2ProductValue').value = '';
+            state.multiParts = JSON.parse(JSON.stringify(entry.commissionParts));
+            renderMultiParts();
+          } else if (entry.commissionType && entry.commissionType.indexOf('+') !== -1) {
+            $('commPctProductValue').value = '';
+            $('commFixedProductValue').value = '';
+            $('commP1ProductValue').value = '';
+            $('commP2ProductValue').value = '';
+            state.multiParts = [];
+            var pFields = [
+              { pv: entry.commP1ProductValue, rate: entry.commP1Pct },
+              { pv: entry.commP2ProductValue, rate: entry.commP2Pct },
+              { pv: entry.commP3ProductValue, rate: entry.commP3Pct },
+              { pv: entry.commP4ProductValue, rate: entry.commP4Pct }
+            ];
+            pFields.forEach(function (pf) {
+              if (pf.pv > 0 || pf.rate > 0) {
+                state.multiParts.push({ type: 'P', pv: pf.pv || '', rate: pf.rate !== undefined && pf.rate !== '' ? pf.rate : 5 });
+              }
+            });
+            var fFields = [
+              { pv: entry.commF1ProductValue, rate: entry.commF1Amt || entry.commF1Fixed },
+              { pv: entry.commF2ProductValue, rate: entry.commF2Amt || entry.commF2Fixed },
+              { pv: entry.commF3ProductValue, rate: entry.commF3Amt || entry.commF3Fixed },
+              { pv: entry.commF4ProductValue, rate: entry.commF4Amt || entry.commF4Fixed }
+            ];
+            fFields.forEach(function (ff) {
+              if (ff.pv > 0 || ff.rate > 0) {
+                state.multiParts.push({ type: 'F', pv: ff.pv || '', rate: ff.rate || 0 });
+              }
+            });
+            renderMultiParts();
+          } else {
+            $('commPctProductValue').value = '';
+            $('commFixedProductValue').value = '';
+            $('commP1ProductValue').value = '';
+            $('commP1Pct').value = '5';
+            $('commP2ProductValue').value = '';
+            $('commP2Pct').value = '2.5';
+            state.multiParts = [];
+          }
           setPillValue('termsPills', 'selectedTerms', entry.paymentTerms || '', 'termsOther');
           setPillValue('statusPills', 'selectedStatus', entry.paymentStatus || 'RCD');
           setPillValue('wbPills', 'selectedWB', entry.wbBilling || 'B');
@@ -2805,6 +3293,12 @@
             return;
           }
 
+          var isMulti = (state.selectedCommType === 'CUSTOM' || (state.selectedCommType && state.selectedCommType.indexOf('+') !== -1 && state.selectedCommType !== 'P + F' && state.selectedCommType !== 'P + P') || (Array.isArray(state.multiParts) && state.multiParts.length > 0 && $('commMultiSection') && !$('commMultiSection').classList.contains('hidden')));
+
+          var pParts = (state.multiParts || []).filter(function (p) { return p.type === 'P'; });
+          var fParts = (state.multiParts || []).filter(function (p) { return p.type === 'F'; });
+          var totalFixedAmt = fParts.reduce(function (sum, f) { return sum + toNum(f.rate); }, 0);
+
           var payload = {
             authCode: state.currentUser.code,
             authPin: state.currentUser.pin,
@@ -2828,8 +3322,27 @@
             productValue: toNum($('productValue').value),
             freightCharges: toNum($('freightCharges').value),
             commissionType: state.selectedCommType,
-            commissionPct: state.selectedCommType === 'F' ? 0 : getEffectiveCommPct(),
-            commissionFixed: state.selectedCommType === 'P' ? 0 : toNum($('commissionFixed').value),
+            commissionPct: (state.selectedCommType === 'F') ? 0 : (isMulti && pParts.length > 0 ? toNum(pParts[0].rate) : (state.selectedCommType === 'P + P' ? toNum($('commP1Pct').value) : getEffectiveCommPct())),
+            commissionFixed: (state.selectedCommType === 'P' || state.selectedCommType === 'P + P') ? 0 : (isMulti && totalFixedAmt > 0 ? totalFixedAmt : toNum($('commissionFixed').value)),
+            commPctProductValue: state.selectedCommType === 'P + F' ? toNum($('commPctProductValue').value) : 0,
+            commFixedProductValue: state.selectedCommType === 'P + F' ? toNum($('commFixedProductValue').value) : 0,
+            commP1ProductValue: isMulti ? (pParts[0] ? toNum(pParts[0].pv) : 0) : (state.selectedCommType === 'P + P' ? toNum($('commP1ProductValue').value) : 0),
+            commP1Pct: isMulti ? (pParts[0] ? toNum(pParts[0].rate) : 0) : (state.selectedCommType === 'P + P' ? toNum($('commP1Pct').value) : 0),
+            commP2ProductValue: isMulti ? (pParts[1] ? toNum(pParts[1].pv) : 0) : (state.selectedCommType === 'P + P' ? toNum($('commP2ProductValue').value) : 0),
+            commP2Pct: isMulti ? (pParts[1] ? toNum(pParts[1].rate) : 0) : (state.selectedCommType === 'P + P' ? toNum($('commP2Pct').value) : 0),
+            commP3ProductValue: isMulti && pParts[2] ? toNum(pParts[2].pv) : 0,
+            commP3Pct: isMulti && pParts[2] ? toNum(pParts[2].rate) : 0,
+            commP4ProductValue: isMulti && pParts[3] ? toNum(pParts[3].pv) : 0,
+            commP4Pct: isMulti && pParts[3] ? toNum(pParts[3].rate) : 0,
+            commF1ProductValue: isMulti && fParts[0] ? toNum(fParts[0].pv) : 0,
+            commF1Amt: isMulti && fParts[0] ? toNum(fParts[0].rate) : 0,
+            commF2ProductValue: isMulti && fParts[1] ? toNum(fParts[1].pv) : 0,
+            commF2Amt: isMulti && fParts[1] ? toNum(fParts[1].rate) : 0,
+            commF3ProductValue: isMulti && fParts[2] ? toNum(fParts[2].pv) : 0,
+            commF3Amt: isMulti && fParts[2] ? toNum(fParts[2].rate) : 0,
+            commF4ProductValue: isMulti && fParts[3] ? toNum(fParts[3].pv) : 0,
+            commF4Amt: isMulti && fParts[3] ? toNum(fParts[3].rate) : 0,
+            commissionParts: isMulti ? JSON.parse(JSON.stringify(state.multiParts)) : [],
             paymentTerms: termsVal,
             paymentStatus: state.selectedStatus,
             wbBilling: state.selectedWB,
@@ -2864,8 +3377,44 @@
             var fr = payload.freightCharges;
             var gst = Math.round((pv + fr) * 0.18 * 100) / 100;
             var totalVal = Math.round((pv + fr + gst) * 100) / 100;
-            var commVal = Math.round(pv * (payload.commissionPct / 100) * 100) / 100;
-            var totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
+            var commVal = 0;
+            var totalComm = 0;
+
+            if (Array.isArray(payload.commissionParts) && payload.commissionParts.length > 0) {
+              payload.commissionParts.forEach(function (pt) {
+                var ptPv = toNum(pt.pv);
+                var ptRate = toNum(pt.rate);
+                if (pt.type === 'P') {
+                  commVal = Math.round((commVal + (ptPv * (ptRate / 100))) * 100) / 100;
+                } else {
+                  commVal = Math.round(commVal * 100) / 100;
+                }
+              });
+              totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
+            } else if (payload.commissionType === 'P + P') {
+              var p1Val = payload.commP1ProductValue;
+              var p2Val = payload.commP2ProductValue;
+              var p1Pct = (payload.commP1Pct || 0) / 100;
+              var p2Pct = (payload.commP2Pct || 0) / 100;
+              if (p1Val <= 0 && p2Val <= 0) p1Val = pv;
+              else if (p1Val > 0 && p2Val <= 0 && pv > p1Val) p2Val = Math.max(0, Math.round((pv - p1Val) * 100) / 100);
+              else if (p2Val > 0 && p1Val <= 0 && pv > p2Val) p1Val = Math.max(0, Math.round((pv - p2Val) * 100) / 100);
+              var c1 = Math.round(p1Val * p1Pct * 100) / 100;
+              var c2 = Math.round(p2Val * p2Pct * 100) / 100;
+              commVal = Math.round((c1 + c2) * 100) / 100;
+              totalComm = commVal;
+            } else {
+              var pctPv = pv;
+              if (payload.commissionType === 'P + F') {
+                if (payload.commPctProductValue > 0) {
+                  pctPv = payload.commPctProductValue;
+                } else if (payload.commFixedProductValue > 0) {
+                  pctPv = Math.max(0, pv - payload.commFixedProductValue);
+                }
+              }
+              commVal = Math.round(pctPv * (payload.commissionPct / 100) * 100) / 100;
+              totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
+            }
 
             var idx = payload.responseId
               ? state.allEntries.findIndex(function (x) { return x.responseId === payload.responseId; })
@@ -3575,6 +4124,194 @@
 
         $('productValue').addEventListener('input', function () {
           $('productValue').dataset.userEdited = 'true';
+          var pv = toNum($('productValue').value);
+          if (state.selectedCommType === 'P + F' && pv > 0) {
+            var pctPv = toNum($('commPctProductValue').value);
+            var fixPv = toNum($('commFixedProductValue').value);
+            if (pctPv > 0 && pctPv <= pv) {
+              $('commFixedProductValue').value = Math.max(0, Math.round((pv - pctPv) * 100) / 100);
+            } else if (fixPv > 0 && fixPv <= pv) {
+              $('commPctProductValue').value = Math.max(0, Math.round((pv - fixPv) * 100) / 100);
+            }
+          } else if (state.selectedCommType === 'P + P' && pv > 0) {
+            var p1 = toNum($('commP1ProductValue').value);
+            var p2 = toNum($('commP2ProductValue').value);
+            if (p1 > 0 && p1 <= pv) {
+              $('commP2ProductValue').value = Math.max(0, Math.round((pv - p1) * 100) / 100);
+            } else if (p2 > 0 && p2 <= pv) {
+              $('commP1ProductValue').value = Math.max(0, Math.round((pv - p2) * 100) / 100);
+            }
+          }
+          updateLiveCalc();
+        });
+
+        function updateP1PillState() {
+          var el = $('commP1Pct');
+          if (!el) return;
+          var val = String(el.value || '');
+          document.querySelectorAll('.pp-p1-btn').forEach(function (btn) {
+            var isAct = btn.getAttribute('data-val') === val;
+            btn.classList.toggle('active', isAct);
+            btn.classList.toggle('border-indigo-600', isAct);
+            btn.classList.toggle('bg-indigo-50', isAct);
+            btn.classList.toggle('text-indigo-700', isAct);
+            btn.classList.toggle('border-slate-300', !isAct);
+            btn.classList.toggle('bg-white', !isAct);
+            btn.classList.toggle('text-slate-700', !isAct);
+          });
+        }
+
+        function updateP2PillState() {
+          var el = $('commP2Pct');
+          if (!el) return;
+          var val = String(el.value || '');
+          document.querySelectorAll('.pp-p2-btn').forEach(function (btn) {
+            var isAct = btn.getAttribute('data-val') === val;
+            btn.classList.toggle('active', isAct);
+            btn.classList.toggle('border-indigo-600', isAct);
+            btn.classList.toggle('bg-indigo-50', isAct);
+            btn.classList.toggle('text-indigo-700', isAct);
+            btn.classList.toggle('border-slate-300', !isAct);
+            btn.classList.toggle('bg-white', !isAct);
+            btn.classList.toggle('text-slate-700', !isAct);
+          });
+        }
+
+        $('commP1ProductValue').addEventListener('input', function () {
+          var pv = toNum($('productValue').value);
+          var p1 = toNum($('commP1ProductValue').value);
+          if (pv > 0) {
+            $('commP2ProductValue').value = p1 > 0 ? Math.max(0, Math.round((pv - p1) * 100) / 100) : '';
+          } else if (p1 > 0 && toNum($('commP2ProductValue').value) > 0) {
+            $('productValue').value = Math.round((p1 + toNum($('commP2ProductValue').value)) * 100) / 100;
+          }
+          updateLiveCalc();
+        });
+
+        $('commP2ProductValue').addEventListener('input', function () {
+          var pv = toNum($('productValue').value);
+          var p2 = toNum($('commP2ProductValue').value);
+          if (pv > 0) {
+            $('commP1ProductValue').value = p2 > 0 ? Math.max(0, Math.round((pv - p2) * 100) / 100) : '';
+          } else if (p2 > 0 && toNum($('commP1ProductValue').value) > 0) {
+            $('productValue').value = Math.round((toNum($('commP1ProductValue').value) + p2) * 100) / 100;
+          }
+          updateLiveCalc();
+        });
+
+        $('commP1Pct').addEventListener('input', function () {
+          updateP1PillState();
+          updateLiveCalc();
+        });
+
+        $('commP2Pct').addEventListener('input', function () {
+          updateP2PillState();
+          updateLiveCalc();
+        });
+
+        $('commP1Pills').addEventListener('click', function (e) {
+          var btn = e.target.closest('button[data-val]');
+          if (!btn) return;
+          $('commP1Pct').value = btn.getAttribute('data-val');
+          updateP1PillState();
+          updateLiveCalc();
+        });
+
+        $('commP2Pills').addEventListener('click', function (e) {
+          var btn = e.target.closest('button[data-val]');
+          if (!btn) return;
+          $('commP2Pct').value = btn.getAttribute('data-val');
+          updateP2PillState();
+          updateLiveCalc();
+        });
+
+        // Multi-Part Commission Builder Events
+        $('commAddPBtn').addEventListener('click', function () {
+          if (!Array.isArray(state.multiParts)) state.multiParts = [];
+          var pCount = state.multiParts.filter(function (p) { return p.type === 'P'; }).length;
+          if (pCount >= 4) {
+            showToast('Maximum 4 Percentage (P) parts allowed.', true);
+            return;
+          }
+          var pv = toNum($('productValue').value);
+          var totalAlloc = state.multiParts.reduce(function (s, p) { return s + toNum(p.pv); }, 0);
+          var rem = pv > totalAlloc ? Math.max(0, Math.round((pv - totalAlloc) * 100) / 100) : '';
+          state.multiParts.push({ type: 'P', pv: rem, rate: 5 });
+          renderMultiParts();
+        });
+
+        $('commAddFBtn').addEventListener('click', function () {
+          if (!Array.isArray(state.multiParts)) state.multiParts = [];
+          var fCount = state.multiParts.filter(function (p) { return p.type === 'F'; }).length;
+          if (fCount >= 4) {
+            showToast('Maximum 4 Fixed (F) parts allowed.', true);
+            return;
+          }
+          var pv = toNum($('productValue').value);
+          var totalAlloc = state.multiParts.reduce(function (s, p) { return s + toNum(p.pv); }, 0);
+          var rem = pv > totalAlloc ? Math.max(0, Math.round((pv - totalAlloc) * 100) / 100) : '';
+          state.multiParts.push({ type: 'F', pv: rem, rate: 0 });
+          renderMultiParts();
+        });
+
+        $('commPartsContainer').addEventListener('input', function (e) {
+          var pvInput = e.target.closest('input[data-part-pv]');
+          if (pvInput) {
+            var idx = Number(pvInput.getAttribute('data-part-pv'));
+            if (state.multiParts[idx]) {
+              state.multiParts[idx].pv = pvInput.value;
+              updateLiveCalc();
+            }
+            return;
+          }
+          var rateInput = e.target.closest('input[data-part-rate]');
+          if (rateInput) {
+            var idx = Number(rateInput.getAttribute('data-part-rate'));
+            if (state.multiParts[idx]) {
+              state.multiParts[idx].rate = rateInput.value;
+              updateLiveCalc();
+            }
+          }
+        });
+
+        $('commPartsContainer').addEventListener('click', function (e) {
+          var removeBtn = e.target.closest('button[data-remove-part]');
+          if (removeBtn) {
+            var idx = Number(removeBtn.getAttribute('data-remove-part'));
+            state.multiParts.splice(idx, 1);
+            renderMultiParts();
+            return;
+          }
+          var pillBtn = e.target.closest('button[data-part-rate-pill]');
+          if (pillBtn) {
+            var idx = Number(pillBtn.getAttribute('data-part-rate-pill'));
+            var val = pillBtn.getAttribute('data-val');
+            if (state.multiParts[idx]) {
+              state.multiParts[idx].rate = val;
+              renderMultiParts();
+            }
+          }
+        });
+
+        $('commPctProductValue').addEventListener('input', function () {
+          var pv = toNum($('productValue').value);
+          var pctPv = toNum($('commPctProductValue').value);
+          if (pv > 0) {
+            $('commFixedProductValue').value = pctPv > 0 ? Math.max(0, Math.round((pv - pctPv) * 100) / 100) : '';
+          } else if (pctPv > 0 && toNum($('commFixedProductValue').value) > 0) {
+            $('productValue').value = Math.round((pctPv + toNum($('commFixedProductValue').value)) * 100) / 100;
+          }
+          updateLiveCalc();
+        });
+
+        $('commFixedProductValue').addEventListener('input', function () {
+          var pv = toNum($('productValue').value);
+          var fixPv = toNum($('commFixedProductValue').value);
+          if (pv > 0) {
+            $('commPctProductValue').value = fixPv > 0 ? Math.max(0, Math.round((pv - fixPv) * 100) / 100) : '';
+          } else if (fixPv > 0 && toNum($('commPctProductValue').value) > 0) {
+            $('productValue').value = Math.round((toNum($('commPctProductValue').value) + fixPv) * 100) / 100;
+          }
           updateLiveCalc();
         });
 

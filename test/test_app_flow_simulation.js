@@ -117,7 +117,7 @@ const domSandbox = {
 
 const pillDefs = {
   regionPills: ['R - Pune', 'N - Pune', 'MP', 'WB', '__OTHER__'],
-  commTypePills: ['P', 'F', 'P + F'],
+  commTypePills: ['P', 'F', 'P + F', 'P + P', 'CUSTOM'],
   commPctPills: ['5', '4', '3', '2.5', '2', '1.5', '1', '0', '__OTHER__'],
   termsPills: ['PI', 'CR', 'PDC', '__OTHER__'],
   statusPills: ['RCD', 'PENDING', 'PARTIAL'],

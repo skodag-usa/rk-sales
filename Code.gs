@@ -710,9 +710,9 @@ function applyDataConditionalFormatting_(sh) {
       .setRanges([commissionPctRange, commissionValueRange])
       .build(),
 
-    // 4. Commission Type is F or P + F: Yellow background (#FFF59D) on Commission Type (Column S) & Commission Fixed (Column U)
+    // 4. Commission Type is F, P + F, or combo: Yellow background (#FFF59D) on Commission Type (Column S) & Commission Fixed (Column U)
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=OR($S2="F",$S2="P + F")')
+      .whenFormulaSatisfied('=OR($S2="F",$S2="P + F",ISNUMBER(SEARCH("+",$S2)))')
       .setBackground('#FFF59D')
       .setRanges([commissionTypeRange, commissionFixedRange])
       .build(),
@@ -889,8 +889,67 @@ function saveEntry(payload) {
     var totalVal = round2_(pv + fr + gst);
     var commissionType = String(payload.commissionType || 'P').trim().toUpperCase();
     var pct = commissionType === 'F' ? 0 : toNum_(String(payload.commissionPct || '').replace('%', '')) / 100;
-    var commVal = round2_(pv * pct);
-    var commFix = commissionType === 'P' ? 0 : toNum_(payload.commissionFixed);
+
+    var pctPv = pv;
+    var commVal = 0;
+    var commFix = 0;
+
+    var parts = Array.isArray(payload.commissionParts) && payload.commissionParts.length > 0 ? payload.commissionParts : null;
+
+    if (parts) {
+      parts.forEach(function (pt) {
+        var ptPv = toNum_(pt.pv !== undefined ? pt.pv : pt.productValue);
+        var ptRate = toNum_(pt.rate !== undefined ? pt.rate : (pt.type === 'P' ? pt.pct : (pt.fixed !== undefined ? pt.fixed : pt.amt)));
+        if (String(pt.type || '').toUpperCase() === 'P') {
+          commVal = round2_(commVal + (ptPv * (ptRate / 100)));
+          if (pct === 0 && ptRate > 0) pct = ptRate / 100;
+        } else {
+          commFix = round2_(commFix + ptRate);
+        }
+      });
+      if (pct === 0 && payload.commissionPct) pct = toNum_(payload.commissionPct) / 100;
+    } else if (commissionType === 'P + P') {
+      var p1Val = toNum_(payload.commP1ProductValue);
+      var p1Pct = toNum_(payload.commP1Pct !== undefined && payload.commP1Pct !== '' ? payload.commP1Pct : payload.commissionPct) / 100;
+      var p2Val = toNum_(payload.commP2ProductValue);
+      var p2Pct = toNum_(payload.commP2Pct) / 100;
+      if (p1Val <= 0 && p2Val <= 0) p1Val = pv;
+      else if (p1Val > 0 && p2Val <= 0 && pv > p1Val) p2Val = Math.max(0, pv - p1Val);
+      else if (p2Val > 0 && p1Val <= 0 && pv > p2Val) p1Val = Math.max(0, pv - p2Val);
+      var c1 = round2_(p1Val * p1Pct);
+      var c2 = round2_(p2Val * p2Pct);
+      commVal = round2_(c1 + c2);
+      commFix = 0;
+      pct = p1Pct;
+    } else if (commissionType.indexOf('+') !== -1 && (payload.commP1ProductValue || payload.commP2ProductValue || payload.commP3ProductValue || payload.commP4ProductValue || payload.commF1Amt || payload.commF2Amt || payload.commF3Amt || payload.commF4Amt)) {
+      var pVals = [toNum_(payload.commP1ProductValue), toNum_(payload.commP2ProductValue), toNum_(payload.commP3ProductValue), toNum_(payload.commP4ProductValue)];
+      var pRates = [toNum_(payload.commP1Pct), toNum_(payload.commP2Pct), toNum_(payload.commP3Pct), toNum_(payload.commP4Pct)];
+      for (var pi = 0; pi < 4; pi++) {
+        if (pVals[pi] > 0 || pRates[pi] > 0) {
+          commVal = round2_(commVal + (pVals[pi] * (pRates[pi] / 100)));
+          if (pct === 0 && pRates[pi] > 0) pct = pRates[pi] / 100;
+        }
+      }
+      var fAmts = [toNum_(payload.commF1Amt), toNum_(payload.commF2Amt), toNum_(payload.commF3Amt), toNum_(payload.commF4Amt)];
+      for (var fi = 0; fi < 4; fi++) {
+        if (fAmts[fi] > 0) {
+          commFix = round2_(commFix + fAmts[fi]);
+        }
+      }
+      if (commFix === 0 && payload.commissionFixed) commFix = toNum_(payload.commissionFixed);
+    } else {
+      if (commissionType === 'P + F') {
+        var splitPctPv = toNum_(payload.commPctProductValue);
+        var splitFixPv = toNum_(payload.commFixedProductValue);
+        if (splitPctPv > 0) {
+          pctPv = splitPctPv;
+        } else if (splitFixPv > 0) {
+          pctPv = Math.max(0, pv - splitFixPv);
+        }
+      }
+      commVal = round2_(pctPv * pct);
+      commFix = commissionType === 'P' ? 0 : toNum_(payload.commissionFixed);
+    }
     var totalComm = round2_(commVal + commFix);
 
     var requestedId = String(payload.responseId || '').trim();
@@ -1315,8 +1374,26 @@ function upsert_(sh, rowNum, row) {
   try {
     sh.getRange(targetRow, 17).setFormula('=ROUND((O' + targetRow + '+P' + targetRow + ')*0.18, 2)');
     sh.getRange(targetRow, 18).setFormula('=ROUND(O' + targetRow + '+P' + targetRow + '+Q' + targetRow + ', 2)');
-    sh.getRange(targetRow, 22).setFormula('=IF(OR(S' + targetRow + '="P",S' + targetRow + '="P + F"),ROUND(O' + targetRow + '*T' + targetRow + ', 2),0)');
-    sh.getRange(targetRow, 23).setFormula('=ROUND(V' + targetRow + '+IF(OR(S' + targetRow + '="F",S' + targetRow + '="P + F"),U' + targetRow + ',0), 2)');
+    var rowCommType = String(row[18] || '').trim().toUpperCase();
+    var rowPv = Number(row[14]) || 0;
+    var rowPct = Number(row[19]) || 0;
+    var rowCommVal = Number(row[21]) || 0;
+    if (rowCommType === 'P + F' && rowPct > 0 && Math.abs(rowPv * rowPct - rowCommVal) > 0.01) {
+      var customPctPv = Math.round((rowCommVal / rowPct) * 100) / 100;
+      sh.getRange(targetRow, 22).setFormula('=ROUND(' + customPctPv + '*T' + targetRow + ', 2)');
+    } else if (rowCommType === 'P' || (rowCommType === 'P + F' && Math.abs(rowPv * rowPct - rowCommVal) <= 0.01)) {
+      sh.getRange(targetRow, 22).setFormula('=IF(OR(S' + targetRow + '="P",S' + targetRow + '="P + F"),ROUND(O' + targetRow + '*T' + targetRow + ', 2),0)');
+    } else if (rowCommType === 'F') {
+      sh.getRange(targetRow, 22).setValue(0);
+    } else {
+      // Multi-part combination (e.g. P + P, P + P + P + F, P + F + F, etc.)
+      sh.getRange(targetRow, 22).setValue(rowCommVal);
+    }
+    if (rowCommType.indexOf('F') !== -1 && rowCommType !== 'F' && rowCommType !== 'P + F') {
+      sh.getRange(targetRow, 23).setFormula('=ROUND(V' + targetRow + '+U' + targetRow + ', 2)');
+    } else {
+      sh.getRange(targetRow, 23).setFormula('=ROUND(V' + targetRow + '+IF(OR(S' + targetRow + '="F",S' + targetRow + '="P + F"),U' + targetRow + ',0), 2)');
+    }
   } catch (err) {}
 }
 

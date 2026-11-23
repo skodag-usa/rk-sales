@@ -21,8 +21,8 @@
 
 ## Verification
 
-- Run all five test suites from repo root before treating changes as verified:
-  `node test/test_code_gs.js`, `test/test_e2e_simulation.js`, `test/test_email_report.js`, `test/test_frontend.js`, `test/test_backup.js`.
+- Run all six test suites from repo root before treating changes as verified:
+  `node test/test_code_gs.js`, `test/test_e2e_simulation.js`, `test/test_email_report.js`, `test/test_frontend.js`, `test/test_backup.js`, `test/test_app_flow_simulation.js`.
 - No build/lint/typecheck scripts; `package.json` is empty.
 
 Source: `Code.gs`, `AGENTS.md`, tests in `test/`.

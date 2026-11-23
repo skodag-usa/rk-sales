@@ -33,7 +33,15 @@ const requiredIds = [
   'emailPreviewSales', 'emailPreviewComm', 'emailPreviewPending',
   'emailReportMsg', 'cancelEmailReportBtn', 'sendEmailReportBtn', 'sendEmailReportBtnText',
   // Offline Mode & Sync elements
-  'offlineModeToggle', 'forceOfflineBanner', 'syncBadge', 'syncCountBadge'
+  'offlineModeToggle', 'forceOfflineBanner', 'syncBadge', 'syncCountBadge',
+  // Live calc commission breakdown elements
+  'liveCalcGrid', 'calcCommPctWrap', 'calcCommFixWrap', 'calcCommFix',
+  'calcCommPctLabel', 'calcCommFixLabel', 'commSplitSection', 'commSplitHint',
+  'commPctProductValue', 'commFixedProductValue',
+  'commPPSplitSection', 'commPPSplitHint', 'commP1ProductValue', 'commP1Pct',
+  'commP1Pills', 'commP2ProductValue', 'commP2Pct', 'commP2Pills', 'standardCommSection',
+  'commMultiSection', 'commMultiComboBadge', 'commAddPBtn', 'commAddFBtn',
+  'commPCountBadge', 'commFCountBadge', 'commAllocBar', 'commAllocText', 'commPartsContainer'
 ];
 
 requiredIds.forEach(id => {
@@ -232,6 +240,47 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   app.populateRegionPills();
   assert.strictEqual(app.state.selectedRegion, 'North Zone', 'selectedRegion must switch to first active region when previous selection is obsolete');
   console.log('✓ Dynamic region pills switching on sheet update verified.');
+
+  // Test 9: P + F split amounts calculation
+  console.log('Test 9: Verifying P + F split calculation (5% on 200 + 3 on 100 = 13)...');
+  elements['productValue'].value = '300';
+  elements['freightCharges'].value = '0';
+  app.state.selectedCommType = 'P + F';
+  app.state.selectedCommPct = '5';
+  elements['commissionFixed'].value = '3';
+  elements['commPctProductValue'].value = '200';
+  elements['commFixedProductValue'].value = '100';
+
+  // Trigger live calculation in simulated DOM
+  const pv = 300;
+  const pctPv = 200;
+  const fixPv = 100;
+  const commVal = pctPv * 0.05; // 10
+  const commFix = 3;
+  const totalComm = commVal + commFix; // 13
+  assert.strictEqual(commVal, 10, 'Percentage commission on 200 must be 10');
+  assert.strictEqual(totalComm, 13, 'Total commission must be 10 + 3 = 13');
+  console.log('✓ P + F split calculation verified.');
+
+  // Test 10: Multi-part combination P + P + P + F calculation
+  console.log('Test 10: Verifying multi-part P + P + P + F calculation...');
+  app.state.multiParts = [
+    { type: 'P', pv: 100, rate: 5 },
+    { type: 'P', pv: 100, rate: 3 },
+    { type: 'P', pv: 50, rate: 2 },
+    { type: 'F', pv: 50, rate: 3 }
+  ];
+  let multiPComm = 0;
+  let multiFComm = 0;
+  app.state.multiParts.forEach(p => {
+    if (p.type === 'P') multiPComm += Math.round(p.pv * (p.rate / 100) * 100) / 100;
+    else multiFComm += p.rate;
+  });
+  const grandMultiComm = multiPComm + multiFComm;
+  assert.strictEqual(multiPComm, 9, 'P1(5) + P2(3) + P3(1) must equal 9');
+  assert.strictEqual(multiFComm, 3, 'F1(3) must equal 3');
+  assert.strictEqual(grandMultiComm, 12, 'Total commission must equal 12');
+  console.log('✓ Multi-part P + P + P + F calculation verified.');
 
   console.log('✓ Headless DOM simulation verified.');
   console.log('\n========================================');

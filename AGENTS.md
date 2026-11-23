@@ -4,14 +4,15 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
 
 ## Commands
 
-- Run all tests (from repo root — tests read `Code.gs`/`Index.html` via relative paths):
+- Run all tests from the repo root (tests read `Code.gs`/`Index.html` via relative paths):
   - `node test/test_code_gs.js`
   - `node test/test_e2e_simulation.js`
   - `node test/test_email_report.js`
   - `node test/test_frontend.js`
   - `node test/test_backup.js`
-- No build, lint, or typecheck scripts; `package.json` is empty. Run all five test files for verification.
-- Deploy: paste `Code.gs` + `Index.html` (HTML file must be named `Index`) into the bound Apps Script project, then Deploy → Web app (Execute as: Me, Who has access: Anyone). Sheet stays private.
+  - `node test/test_app_flow_simulation.js`
+- No build, lint, or typecheck scripts; `package.json` has no dependencies. Run all six test files for verification.
+- Deploy: paste `Code.gs` + `Index.html` (HTML file must be named `Index`) into the bound Apps Script project, then Deploy → Web app (Execute as: Me, Who has access: Anyone; users must sign in with a Google account). Sheet stays private.
 
 ## Architecture
 

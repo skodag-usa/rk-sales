@@ -754,6 +754,132 @@ const dashFresh = sandbox.getDashboardData({ skipCache: true });
 assert.ok(dashFresh.regions.includes('North Zone'), 'Fresh dashboard data must reflect new regions immediately');
 console.log('✓ Dedicated Region tab and flexible column auto-detection verified.');
 
+// Test 21: saveEntry with P + F split amounts
+console.log('Test 21: saveEntry with P + F split amounts (5% on 200 + 3 on 100 = 13)...');
+const splitPayload = {
+  authCode: 'RK',
+  authPin: '1234',
+  month: 'NOV',
+  year: '2026',
+  monthYear: 'NOV-2026',
+  salesPerson: 'RK',
+  partyName: 'Split Precision Ltd',
+  region: 'R - Pune',
+  poNo: 'PO-SPLIT-1',
+  poDate: '2026-11-20',
+  productKeyword: 'LS',
+  productName: 'Leadshine Hybrid',
+  poValue: 300,
+  productValue: 300,
+  freightCharges: 0,
+  commissionType: 'P + F',
+  commissionPct: 5,
+  commissionFixed: 3,
+  commPctProductValue: 200,
+  commFixedProductValue: 100,
+  paymentTerms: 'PI',
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+};
+const splitRes = sandbox.saveEntry(splitPayload);
+assert.ok(splitRes.ok, 'saveEntry must succeed for P + F split');
+const novSh = mockSS.getSheetByName('NOV-2026');
+assert.ok(novSh, 'NOV-2026 sheet must exist');
+const splitRowIdx = novSh.getLastRow();
+// In month sheet: row before summary row
+const savedRowVals = novSh.getRange(splitRowIdx - 1, 1, 1, 32).getValues()[0];
+assert.strictEqual(savedRowVals[14], 300, 'Product Value should be 300');
+assert.strictEqual(savedRowVals[18], 'P + F', 'Commission Type should be P + F');
+assert.strictEqual(savedRowVals[19], 0.05, 'Commission % should be 0.05');
+assert.strictEqual(savedRowVals[20], 3, 'Commission Fixed should be 3');
+assert.strictEqual(savedRowVals[21], '=ROUND(200*T5, 2)', 'Commission Value % formula should be =ROUND(200*T5, 2)');
+assert.ok(String(savedRowVals[22]).includes('V5+IF(OR(S5="F",S5="P + F"),U5,0)'), 'Total Commission formula should sum V5 + U5');
+console.log('✓ saveEntry with P + F split amounts verified.');
+
+// Test 22: saveEntry with P + P split amounts
+console.log('Test 22: saveEntry with P + P split amounts (5% on 200 + 2.5% on 100 = 12.5)...');
+const ppPayload = {
+  authCode: 'RK',
+  authPin: '1234',
+  month: 'NOV',
+  year: '2026',
+  monthYear: 'NOV-2026',
+  salesPerson: 'RK',
+  partyName: 'Dual Percentage Ltd',
+  region: 'R - Pune',
+  poNo: 'PO-PP-1',
+  poDate: '2026-11-21',
+  productKeyword: 'LS',
+  productName: 'Leadshine Dual',
+  poValue: 300,
+  productValue: 300,
+  freightCharges: 0,
+  commissionType: 'P + P',
+  commP1ProductValue: 200,
+  commP1Pct: 5,
+  commP2ProductValue: 100,
+  commP2Pct: 2.5,
+  paymentTerms: 'PI',
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+};
+const ppRes = sandbox.saveEntry(ppPayload);
+assert.ok(ppRes.ok, 'saveEntry must succeed for P + P split');
+const ppNovSh = mockSS.getSheetByName('NOV-2026');
+assert.ok(ppNovSh, 'NOV-2026 sheet must exist');
+const ppRowIdx = ppNovSh.getLastRow();
+const savedPPRowVals = ppNovSh.getRange(ppRowIdx - 1, 1, 1, 32).getValues()[0];
+assert.strictEqual(savedPPRowVals[14], 300, 'Product Value should be 300');
+assert.strictEqual(savedPPRowVals[18], 'P + P', 'Commission Type should be P + P');
+assert.strictEqual(savedPPRowVals[19], 0.05, 'Commission % should be 0.05 (Part 1)');
+assert.strictEqual(savedPPRowVals[20], 0, 'Commission Fixed should be 0');
+assert.strictEqual(savedPPRowVals[21], 12.5, 'Commission Value % should be 12.5');
+assert.ok(String(savedPPRowVals[22]).includes('V'), 'Total Commission formula should reference V');
+console.log('✓ saveEntry with P + P dual percentage split amounts verified.');
+
+// Test 23: saveEntry with multi-part P + P + P + F combination
+console.log('Test 23: saveEntry with multi-part P + P + P + F (3 P parts + 1 F part = 12)...');
+const multiPayload = {
+  authCode: 'RK',
+  authPin: '1234',
+  month: 'NOV',
+  year: '2026',
+  monthYear: 'NOV-2026',
+  salesPerson: 'RK',
+  partyName: 'Multi Combo Precision Ltd',
+  region: 'R - Pune',
+  poNo: 'PO-MULTI-1',
+  poDate: '2026-11-22',
+  productKeyword: 'LS',
+  productName: 'Leadshine Multi',
+  poValue: 300,
+  productValue: 300,
+  freightCharges: 0,
+  commissionType: 'P + P + P + F',
+  commissionParts: [
+    { type: 'P', pv: 100, rate: 5 },
+    { type: 'P', pv: 100, rate: 3 },
+    { type: 'P', pv: 50, rate: 2 },
+    { type: 'F', pv: 50, rate: 3 }
+  ],
+  paymentTerms: 'PI',
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+};
+const multiRes = sandbox.saveEntry(multiPayload);
+assert.ok(multiRes.ok, 'saveEntry must succeed for P + P + P + F combo');
+const multiNovSh = mockSS.getSheetByName('NOV-2026');
+assert.ok(multiNovSh, 'NOV-2026 sheet must exist');
+const multiRowIdx = multiNovSh.getLastRow();
+const savedMultiVals = multiNovSh.getRange(multiRowIdx - 1, 1, 1, 32).getValues()[0];
+assert.strictEqual(savedMultiVals[14], 300, 'Product Value should be 300');
+assert.strictEqual(savedMultiVals[18], 'P + P + P + F', 'Commission Type should be P + P + P + F');
+assert.strictEqual(savedMultiVals[19], 0.05, 'Commission % should be 0.05 (Part 1)');
+assert.strictEqual(savedMultiVals[20], 3, 'Commission Fixed should be 3 (Sum of F parts)');
+assert.strictEqual(savedMultiVals[21], 9, 'Commission Value % should be 9 (100@5% + 100@3% + 50@2%)');
+assert.ok(String(savedMultiVals[22]).includes('+U'), 'Total Commission formula should sum V and U');
+console.log('✓ saveEntry with multi-part P + P + P + F combination verified.');
+
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');
 console.log('========================================');

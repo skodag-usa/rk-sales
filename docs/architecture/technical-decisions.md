@@ -48,4 +48,18 @@
 - Cache-Bypass Metadata: `getDashboardDataWithSS_` always returns freshly fetched `salesPersons` and `regions` lookups directly from the sheet, ensuring metadata edits reflect immediately without waiting for cache expiration. Sync button (`#refreshBtn`) explicitly passes `skipCache: true`.
 - Dynamic UI Pill Selection: In `Index.html`, `#regionPills` dynamically renders active regions from the sheet. If an existing selection becomes obsolete upon sync, it automatically selects the first active sheet region instead of falling back to `__OTHER__`.
 
+## Multi-Commission Split Subsystem (P + F, P + P, and Multi-Part Combinations)
+
+- When Commission Type involves multiple parts (e.g. `P + F`, `P + P`, or multi-part combinations like `P + P + P + F`, `P + P + F + F`), sales/product value is distributed across up to 4 Percentage (P) parts and up to 4 Fixed (F) parts.
+  - **P + F**: Splits value between % and Fixed parts (e.g. ₹300 total = ₹200 @ 5% [₹10] + ₹100 with fixed ₹3 [₹3] = ₹13 total commission).
+  - **P + P**: Splits value between two distinct percentages (e.g. ₹300 total = ₹200 @ 5% [₹10] + ₹100 @ 2.5% [₹2.50] = ₹12.50 total commission).
+  - **Multi-Commission Builder (`CUSTOM` / Combinations)**: Supports arbitrary combinations of up to 4 P parts (P1..P4) and up to 4 F parts (F1..F4) with dynamic "+ Add % (P)" and "+ Add Fixed (F)" buttons, allocation tracking bar (`Allocated: ₹X / ₹Y`), and live combination tag generation (e.g. `P + P + P + F`).
+- **Sheet Representation (Strict 32-Column Preservation)**:
+  - Column 19 (S): Stores combination label (e.g. `P + P + P + F`).
+  - Column 20 (T): Primary % (Part 1 rate, e.g. 0.05).
+  - Column 21 (U): Sum of all Fixed parts.
+  - Column 22 (V): Sum of all Percentage parts.
+  - Column 23 (W): Total Commission formula (`=ROUND(V{row}+U{row}, 2)` for multi-part combos containing 'F', preserving existing `=ROUND(V{row}+IF(OR(S{row}="F",S{row}="P + F"),U{row},0), 2)` for legacy types).
+- **Backend & Offline Mode**: Both `Code.gs` and `Index.html` (offline mode / preview) support `commissionParts` array and discrete fields (`commP1..4`, `commF1..4`), recalculating exact totals across all parts.
+
 Source: `Code.gs`, `AGENTS.md`, `docs/superpowers/plans/`.
