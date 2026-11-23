@@ -46,6 +46,28 @@ function doGet(e) {
   var pwaAsset = e && e.parameter ? String(e.parameter.pwa || '') : '';
   if (pwaAsset === 'manifest') {
     var appUrl = ScriptApp.getService().getUrl() || './';
+    var iconSvg = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">' +
+      '<defs>' +
+      '<linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">' +
+      '<stop offset="0%" stop-color="#090d16"/><stop offset="50%" stop-color="#0f172a"/><stop offset="100%" stop-color="#1e293b"/>' +
+      '</linearGradient>' +
+      '<linearGradient id="tg" x1="0%" y1="0%" x2="100%" y2="100%">' +
+      '<stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e2e8f0"/>' +
+      '</linearGradient>' +
+      '<linearGradient id="ag" x1="0%" y1="100%" x2="100%" y2="0%">' +
+      '<stop offset="0%" stop-color="#059669"/><stop offset="50%" stop-color="#10b981"/><stop offset="100%" stop-color="#34d399"/>' +
+      '</linearGradient>' +
+      '</defs>' +
+      '<rect x="16" y="16" width="480" height="480" rx="104" fill="url(#bg)" stroke="#334155" stroke-width="4"/>' +
+      '<path d="M 116 135 L 116 365 M 116 135 L 210 135 C 260 135, 260 230, 210 230 L 116 230 M 180 225 L 260 365" fill="none" stroke="url(#tg)" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M 296 135 L 296 365 M 405 145 L 302 250 M 336 220 L 420 365" fill="none" stroke="url(#tg)" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M 96 385 C 190 380, 260 320, 395 130" fill="none" stroke="url(#ag)" stroke-width="16" stroke-linecap="round"/>' +
+      '<polygon points="405,105 425,160 370,140" fill="#34d399"/>' +
+      '<rect x="166" y="405" width="180" height="42" rx="21" fill="#0f172a" stroke="#0ea5e9" stroke-width="2"/>' +
+      '<text x="256" y="433" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif" font-size="20" font-weight="800" fill="#38bdf8" letter-spacing="4">SALES</text>' +
+      '</svg>'
+    );
     return ContentService.createTextOutput(JSON.stringify({
       name: 'RK Sales',
       short_name: 'RK Sales',
@@ -55,7 +77,14 @@ function doGet(e) {
       display: 'standalone',
       background_color: '#f1f5f9',
       theme_color: '#0f172a',
-      icons: []
+      icons: [
+        {
+          src: iconSvg,
+          sizes: '512x512',
+          type: 'image/svg+xml',
+          purpose: 'any maskable'
+        }
+      ]
     })).setMimeType(ContentService.MimeType.JSON);
   }
   if (pwaAsset === 'sw') {
