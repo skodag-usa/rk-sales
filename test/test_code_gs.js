@@ -115,6 +115,10 @@ class MockSpreadsheet {
     }
     return s;
   }
+  deleteSheet(sh) {
+    const idx = this.sheets.indexOf(sh);
+    if (idx !== -1) this.sheets.splice(idx, 1);
+  }
   getSheets() { return this.sheets; }
   getUrl() { return 'https://docs.google.com/spreadsheets/d/test/edit'; }
   getId() { return 'test-id'; }
@@ -704,6 +708,51 @@ assert.ok(!activeRegsAfterDeactivation.includes('Goa'), 'Inactive region Goa mus
 const dashPayload = sandbox.getDashboardData();
 assert.ok(Array.isArray(dashPayload.regions), 'getDashboardData must include regions');
 console.log('✓ getRegionsLookup_ Lookup sheet integration & custom regions verified.');
+
+// Test 20: Dedicated Region tab and arbitrary column auto-detection
+console.log('Test 20: Dedicated Region tab and flexible column auto-detection...');
+// Create a separate sheet named 'Region'
+const dedicatedRegionSh = mockSS.insertSheet('Region');
+dedicatedRegionSh.getRange(1, 1, 4, 2).setValues([
+  ['Region Name', 'Status'],
+  ['South Mumbai', 'YES'],
+  ['Navi Mumbai', 'YES'],
+  ['Thane', 'NO']
+]);
+const dedicatedRegs = sandbox.getRegionsLookup_(mockSS);
+assert.ok(dedicatedRegs.includes('South Mumbai'), 'Must detect South Mumbai from dedicated Region sheet');
+assert.ok(dedicatedRegs.includes('Navi Mumbai'), 'Must detect Navi Mumbai from dedicated Region sheet');
+assert.ok(!dedicatedRegs.includes('Thane'), 'Must exclude Thane marked NO');
+
+// Clean up dedicated sheet and test flexible column in Lookup sheet
+mockSS.deleteSheet(dedicatedRegionSh);
+
+// Test updating regions in Column 8
+lookupSh.getRange(2, 8, 2, 2).setValues([
+  ['Pune Central', 'YES'],
+  ['Pune PCMC', 'YES']
+]);
+const col8Regs = sandbox.getRegionsLookup_(mockSS);
+assert.ok(col8Regs.includes('Pune Central'), 'Must detect updated region Pune Central');
+assert.ok(col8Regs.includes('Pune PCMC'), 'Must detect updated region Pune PCMC');
+
+// Test moving regions to an arbitrary column (e.g. Column 11 with header 'Zone')
+for (let r = 1; r <= 10; r++) {
+  lookupSh.getRange(r, 8, 1, 2).setValues([['', '']]);
+}
+lookupSh.getRange(1, 11, 3, 2).setValues([
+  ['Zone', 'Active'],
+  ['North Zone', 'YES'],
+  ['South Zone', 'YES']
+]);
+const flexibleLookupRegs = sandbox.getRegionsLookup_(mockSS);
+assert.ok(flexibleLookupRegs.includes('North Zone'), 'Must detect North Zone from column 11');
+assert.ok(flexibleLookupRegs.includes('South Zone'), 'Must detect South Zone from column 11');
+
+// Test skipCache parameter on getDashboardData
+const dashFresh = sandbox.getDashboardData({ skipCache: true });
+assert.ok(dashFresh.regions.includes('North Zone'), 'Fresh dashboard data must reflect new regions immediately');
+console.log('✓ Dedicated Region tab and flexible column auto-detection verified.');
 
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');

@@ -96,14 +96,14 @@ class MockElement {
   click() {
     (this.listeners['click'] || []).forEach(fn => fn({
       target: this,
-      preventDefault: () => {},
-      stopPropagation: () => {}
+      preventDefault: () => { },
+      stopPropagation: () => { }
     }));
   }
   querySelector(sel) { return null; }
   querySelectorAll(sel) { return []; }
-  focus() {}
-  reset() {}
+  focus() { }
+  reset() { }
   appendChild(c) { this.children.push(c); }
   getContext() { return {}; }
 }
@@ -128,19 +128,19 @@ const domSandbox = {
     },
     querySelectorAll: (sel) => [],
     createElement: (tag) => new MockElement('', tag),
-    addEventListener: () => {}
+    addEventListener: () => { }
   },
   window: {
     location: { search: '' },
-    scrollTo: () => {},
-    addEventListener: () => {},
+    scrollTo: () => { },
+    addEventListener: () => { },
     matchMedia: () => ({ matches: false })
   },
   navigator: { onLine: true },
   localStorage: mockLocalStorage,
   sessionStorage: mockLocalStorage,
   setTimeout: (fn) => setTimeout(fn, 10),
-  clearTimeout: () => {},
+  clearTimeout: () => { },
   console: console
 };
 
@@ -196,7 +196,45 @@ assert.ok(regionPillsEl.innerHTML.includes('data-val="MP"'), 'regionPills must c
 assert.ok(regionPillsEl.innerHTML.includes('data-val="WB"'), 'regionPills must contain WB button');
 console.log('✓ Regions lookup and pill buttons verified.');
 
-console.log('✓ Headless DOM simulation verified.');
-console.log('\n========================================');
-console.log('ALL Index.html TESTS PASSED SUCCESSFULLY!');
-console.log('========================================');
+// Test 7: Verify Offline authentication credential encryption & hashing
+console.log('Test 7: Verifying offline auth credential encryption & hashing...');
+(async () => {
+  app.cacheOfflineCredential({ code: 'RK', name: 'Rahul Kodag', role: 'ADMIN', pin: '1234' });
+
+  const rawOfflineAuth = mockLocalStorage.getItem('rk_sales_offline_auth_v1');
+  assert.ok(rawOfflineAuth, 'Offline auth storage must exist');
+  const parsedAuthList = JSON.parse(rawOfflineAuth);
+  const rkCred = parsedAuthList.find(u => u.code === 'RK');
+  assert.ok(rkCred, 'RK cred must be saved in offlineAuth');
+  assert.strictEqual(rkCred.pin, undefined, 'Plaintext PIN must NOT be stored in offlineAuth storage!');
+  assert.ok(rkCred.pinHash && rkCred.pinHash.length === 64, 'pinHash must be a valid 64-char SHA-256 hash');
+  assert.ok(rkCred.encryptedPin && rkCred.encryptedPin.startsWith('enc_v1:'), 'encryptedPin must be stored as enc_v1 ciphertext');
+
+  assert.strictEqual(app.hashPin('RK', '1234'), rkCred.pinHash, 'hashPin must match stored pinHash');
+  assert.strictEqual(app.decryptPin('RK', rkCred.encryptedPin), '1234', 'decryptPin must successfully decrypt encrypted PIN');
+
+  // Test localLogin authentication with encrypted credentials
+  const mockLoginBtn = new MockElement('loginSubmitBtn', 'button');
+  elements['loginSubmitBtn'] = mockLoginBtn;
+
+  app.localLogin('RK', '0000', mockLoginBtn);
+  await new Promise(r => setTimeout(r, 50));
+  assert.strictEqual(elements['loginError'].textContent, 'Incorrect PIN.', 'localLogin must reject incorrect PIN');
+
+  app.localLogin('RK', '1234', mockLoginBtn);
+  await new Promise(r => setTimeout(r, 50));
+  assert.strictEqual(app.state.currentUser.code, 'RK', 'localLogin must succeed with correct PIN');
+  console.log('✓ Offline auth credential encryption & hashing verified.');
+
+  // Test 8: Dynamic Region pills switching on update
+  console.log('Test 8: Verifying dynamic region pills switching on sheet update...');
+  app.state.regions = ['North Zone', 'South Zone', 'Goa'];
+  app.populateRegionPills();
+  assert.strictEqual(app.state.selectedRegion, 'North Zone', 'selectedRegion must switch to first active region when previous selection is obsolete');
+  console.log('✓ Dynamic region pills switching on sheet update verified.');
+
+  console.log('✓ Headless DOM simulation verified.');
+  console.log('\n========================================');
+  console.log('ALL Index.html TESTS PASSED SUCCESSFULLY!');
+  console.log('========================================');
+})();

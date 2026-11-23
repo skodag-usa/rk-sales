@@ -264,9 +264,11 @@
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Region *</label>
             <div id="regionPills" class="flex flex-wrap gap-1.5">
               <button type="button" data-val="R - Pune"
-                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">R - Pune</button>
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">R
+                - Pune</button>
               <button type="button" data-val="N - Pune"
-                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">N - Pune</button>
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">N
+                - Pune</button>
               <button type="button" data-val="MP"
                 class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">MP</button>
               <button type="button" data-val="WB"
@@ -974,6 +976,115 @@
       var initialEditOpened = false;
 
       // ==========================================
+      // CRYPTO & OFFLINE AUTHENTICATION HELPERS
+      // Raw PINs are NEVER stored in persistent storage (IndexedDB / localStorage).
+      // Offline credentials store salted SHA-256 hashes and encrypted tokens.
+      // ==========================================
+      function sha256Hex(ascii) {
+        function rightRotate(value, amount) {
+          return (value >>> amount) | (value << (32 - amount));
+        }
+        var mathPow = Math.pow;
+        var maxWord = mathPow(2, 32);
+        var lengthProperty = 'length';
+        var i, j;
+        var result = '';
+        var words = [];
+        var asciiBitLength = ascii[lengthProperty] * 8;
+        var hash = [];
+        var k = [];
+        var primeCounter = 0;
+        var isComposite = {};
+        for (var candidate = 2; primeCounter < 64; candidate++) {
+          if (!isComposite[candidate]) {
+            for (i = candidate * candidate; i < 312; i += candidate) {
+              isComposite[i] = true;
+            }
+            if (primeCounter < 8) {
+              hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+            }
+            k[primeCounter] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+            primeCounter++;
+          }
+        }
+        for (i = 0; i < ascii[lengthProperty]; i++) {
+          words[i >> 2] |= (ascii.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
+        }
+        words[asciiBitLength >> 5] |= 0x80 << (24 - (asciiBitLength % 32));
+        words[(((asciiBitLength + 64) >> 9) << 4) + 15] = asciiBitLength;
+        for (i = 0; i < words[lengthProperty]; i += 16) {
+          var w = words.slice(i, i + 16);
+          var oldHash = hash.slice(0);
+          hash = hash.slice(0, 8);
+          for (j = 0; j < 64; j++) {
+            var w15 = w[j - 15] || 0, w2 = w[j - 2] || 0;
+            var a = hash[0], e = hash[4];
+            var temp1 = (hash[7] || 0)
+              + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+              + (((e & hash[5]) ^ (~e & hash[6])) || 0)
+              + k[j]
+              + (w[j] = (j < 16) ? (w[j] | 0) : (
+                (w[j - 16] | 0)
+                + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+                + (w[j - 7] | 0)
+                + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+              ) | 0);
+            var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+              + (((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2])) || 0);
+            hash = [(temp1 + temp2) | 0].concat(hash);
+            hash[4] = (hash[4] + temp1) | 0;
+          }
+          for (j = 0; j < 8; j++) {
+            hash[j] = (hash[j] + oldHash[j]) | 0;
+          }
+        }
+        for (j = 0; j < 8; j++) {
+          for (i = 3; i >= 0; i--) {
+            var b = (hash[j] >> (8 * i)) & 255;
+            result += ((b < 16) ? '0' : '') + b.toString(16);
+          }
+        }
+        return result;
+      }
+
+      var PIN_SALT = 'rk_sales_auth_salt_v2_';
+
+      function hashPin(code, pin) {
+        if (!pin) return '';
+        var raw = String(code || '').toUpperCase().trim() + ':' + String(pin).trim() + ':' + PIN_SALT;
+        return sha256Hex(raw);
+      }
+
+      function encryptPin(code, pin) {
+        if (!pin) return '';
+        var raw = String(pin).trim();
+        var key = sha256Hex(PIN_SALT + ':' + String(code || '').toUpperCase().trim());
+        var out = [];
+        for (var i = 0; i < raw.length; i++) {
+          var charCode = raw.charCodeAt(i);
+          var keyByte = parseInt(key.substr((i * 2) % 60, 2), 16) || 0x5a;
+          var enc = (charCode ^ keyByte).toString(16);
+          if (enc.length < 2) enc = '0' + enc;
+          out.push(enc);
+        }
+        return 'enc_v1:' + out.join('');
+      }
+
+      function decryptPin(code, cipherText) {
+        if (!cipherText || typeof cipherText !== 'string') return '';
+        if (cipherText.indexOf('enc_v1:') !== 0) return '';
+        var hex = cipherText.substring(7);
+        var key = sha256Hex(PIN_SALT + ':' + String(code || '').toUpperCase().trim());
+        var chars = [];
+        for (var i = 0; i < hex.length; i += 2) {
+          var encByte = parseInt(hex.substr(i, 2), 16);
+          var keyByte = parseInt(key.substr(((i / 2) * 2) % 60, 2), 16) || 0x5a;
+          chars.push(String.fromCharCode(encByte ^ keyByte));
+        }
+        return chars.join('');
+      }
+
+      // ==========================================
       // RKSalesDB: INDEXEDDB STORAGE ENGINE
       // Clean asynchronous wrapper with localStorage fallback
       // ==========================================
@@ -1127,6 +1238,20 @@
                   if (Array.isArray(migratedAuth)) {
                     migratedAuth.forEach(function (item) {
                       if (item && item.code) aStore.put(item);
+                      if (item && item.code) {
+                        var cCode = String(item.code).toUpperCase().trim();
+                        var pHash = item.pinHash || (item.pin ? hashPin(cCode, item.pin) : '');
+                        var encPin = item.encryptedPin || (item.pin ? encryptPin(cCode, item.pin) : '');
+                        var cleaned = {
+                          code: cCode,
+                          name: item.name || cCode,
+                          role: item.role || 'SALES',
+                          pinHash: pHash,
+                          encryptedPin: encPin,
+                          cachedAt: item.cachedAt || new Date().toISOString()
+                        };
+                        aStore.put(cleaned);
+                      }
                     });
                   }
                   mStore.put({ key: 'migrated_v1', value: true, timestamp: Date.now() });
@@ -1273,37 +1398,66 @@
         }
 
         function getOfflineAuth() {
+          function sanitizeCreds(items) {
+            var list = Array.isArray(items) ? items : [];
+            return list.map(function (u) {
+              if (!u) return u;
+              var cCode = String(u.code || '').toUpperCase().trim();
+              var pHash = u.pinHash || (u.pin ? hashPin(cCode, u.pin) : '');
+              var encPin = u.encryptedPin || (u.pin ? encryptPin(cCode, u.pin) : '');
+              return {
+                code: cCode,
+                name: u.name || cCode,
+                role: u.role || 'SALES',
+                pinHash: pHash,
+                encryptedPin: encPin,
+                cachedAt: u.cachedAt || ''
+              };
+            });
+          }
+
           if (!hasIDB) {
             try {
               var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
               return Promise.resolve(raw ? JSON.parse(raw) : []);
+              return Promise.resolve(sanitizeCreds(raw ? JSON.parse(raw) : []));
             } catch (e) { return Promise.resolve([]); }
           }
           return withStore('offlineAuth', 'readonly', function (store) {
             return store.getAll();
           }).then(function (items) {
             return Array.isArray(items) ? items : [];
+            return sanitizeCreds(items);
           }).catch(function () {
             try {
               var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
               return raw ? JSON.parse(raw) : [];
+              return sanitizeCreds(raw ? JSON.parse(raw) : []);
             } catch (e) { return []; }
           });
         }
 
         function saveOfflineAuth(userObj) {
           if (!userObj || !userObj.code) return Promise.resolve();
+          var cCode = String(userObj.code).toUpperCase().trim();
+          var cPin = String(userObj.pin || '').trim();
+          var pHash = userObj.pinHash || (cPin ? hashPin(cCode, cPin) : '');
+          var encPin = userObj.encryptedPin || (cPin ? encryptPin(cCode, cPin) : '');
+
           var cred = {
-            code: userObj.code,
-            name: userObj.name,
-            role: userObj.role,
-            pin: userObj.pin
+            code: cCode,
+            name: userObj.name || cCode,
+            role: userObj.role || 'SALES',
+            pinHash: pHash,
+            encryptedPin: encPin,
+            cachedAt: new Date().toISOString()
           };
+
           try {
             var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
             var list = raw ? JSON.parse(raw) : [];
             if (!Array.isArray(list)) list = [];
-            list = list.filter(function (u) { return u.code !== cred.code; });
+            list = list.filter(function (u) { return String(u.code).toUpperCase() !== cCode; });
             list.push(cred);
             localStorage.setItem(OFFLINE_AUTH_KEY, JSON.stringify(list));
           } catch (e) { }
@@ -1747,7 +1901,7 @@
             var updated = false;
             cached.forEach(function (u) {
               if (u && u.code && !state.salesPersons.some(function (sp) { return String(sp.code).toUpperCase() === String(u.code).toUpperCase(); })) {
-                state.salesPersons.push({ code: u.code, name: u.name || u.code, active: true, role: u.role || 'SALES', pin: u.pin });
+                state.salesPersons.push({ code: u.code, name: u.name || u.code, active: true, role: u.role || 'SALES' });
                 updated = true;
               }
             });
@@ -1768,13 +1922,18 @@
       }
 
       function localLogin(code, pin, btn) {
+        var trimmedPin = String(pin || '').trim();
+        var upperCode = String(code || '').toUpperCase().trim();
+
         function verifyAndLogin(cached) {
           var found = (cached || []).find(function (u) {
             return String(u.code).toUpperCase() === String(code).toUpperCase();
+            return String(u.code).toUpperCase() === upperCode;
           });
           if (!found) {
             found = state.salesPersons.find(function (u) {
               return String(u.code).toUpperCase() === String(code).toUpperCase();
+              return String(u.code).toUpperCase() === upperCode;
             });
           }
           btn.disabled = false;
@@ -1792,1746 +1951,1774 @@
             return;
           }
           if (String(found.pin || '').trim() !== String(pin).trim()) {
-            $('loginError').textContent = 'Incorrect PIN.';
-            $('loginError').classList.remove('hidden');
-            clearPin();
-            return;
-          }
-          var userObj = {
-            code: found.code,
-            name: found.name,
-            role: found.role || 'SALES',
-            pin: pin
-          };
-          setAuthenticatedUser(userObj);
-          hideLoginModal();
-          showToast('Offline login: welcome, ' + userObj.name + '!');
-        }
 
-        RKSalesDB.getOfflineAuth().then(function (cached) {
-          verifyAndLogin(cached);
-        }).catch(function () {
-          var cached = [];
-          try {
-            var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
-            cached = raw ? JSON.parse(raw) : [];
-          } catch (e) { }
-          verifyAndLogin(cached);
-        });
-      }
-
-      function executeLogin(code, pin) {
-        if (!code) {
-          $('loginError').textContent = 'Please select your user profile.';
-          $('loginError').classList.remove('hidden');
-          return;
-        }
-        if (!pin || pin.length < 4) {
-          $('loginError').textContent = 'Please enter a 4-digit PIN.';
-          $('loginError').classList.remove('hidden');
-          return;
-        }
-
-        $('loginError').classList.add('hidden');
-        var btn = $('loginSubmitBtn');
-        btn.disabled = true;
-        btn.textContent = 'Verifying...';
-
-        if (IS_LIVE_GAS && isAppOnline()) {
-          var handled = false;
-          var loginTimeout = setTimeout(function () {
-            if (!handled) {
-              handled = true;
-              console.warn('Apps Script login timed out; falling back to offline check.');
-              localLogin(code, pin, btn);
+            var match = false;
+            var expectedHash = hashPin(found.code, trimmedPin);
+            if (found.pinHash && found.pinHash === expectedHash) {
+              match = true;
+            } else if (found.encryptedPin && decryptPin(found.code, found.encryptedPin) === trimmedPin) {
+              match = true;
+            } else if (found.pin && String(found.pin).trim() === trimmedPin) {
+              match = true;
+              cacheOfflineCredential({ code: found.code, name: found.name, role: found.role, pin: trimmedPin });
             }
-          }, 9000);
 
-          google.script.run
-            .withSuccessHandler(function (res) {
-              if (handled) return;
-              handled = true;
-              if (loginTimeout) clearTimeout(loginTimeout);
-              btn.disabled = false;
-              btn.textContent = 'Unlock & Sign In';
-              if (res && res.ok && res.user) {
-                var userObj = {
-                  code: res.user.code,
-                  name: res.user.name,
-                  role: res.user.role || 'SALES',
-                  pin: pin
-                };
-                cacheOfflineCredential(userObj);
-                setAuthenticatedUser(userObj);
-                hideLoginModal();
-                showToast('Welcome, ' + userObj.name + '! (' + userObj.role + ')');
-              } else {
-                $('loginError').textContent = (res && res.message) ? res.message : 'Invalid PIN.';
-                $('loginError').classList.remove('hidden');
-                clearPin();
-              }
-            })
-            .withFailureHandler(function (err) {
-              if (handled) return;
-              handled = true;
-              if (loginTimeout) clearTimeout(loginTimeout);
-              // Apps Script can be unreachable while isAppOnline is
-              // still true. Fall back to the last credential cached online.
-              localLogin(code, pin, btn);
-            })
-            .loginUser(code, pin);
-        } else {
-          // Offline/Preview Mode local login.
-          setTimeout(function () { localLogin(code, pin, btn); }, 150);
-        }
-      }
+            if (!match) {
+              $('loginError').textContent = 'Incorrect PIN.';
+              $('loginError').classList.remove('hidden');
+              clearPin();
+              return;
+            }
+            var userObj = {
+              code: found.code,
+              name: found.name,
+              role: found.role || 'SALES',
+              pin: trimmedPin
+            };
+            setAuthenticatedUser(userObj);
+            hideLoginModal();
+            showToast('Offline login: welcome, ' + userObj.name + '!');
+          }
 
-      function setAuthenticatedUser(userObj) {
-        state.currentUser = userObj;
-        saveSession(userObj);
-        try { localStorage.setItem('rk_sales_last_user_code', userObj.code); } catch (e) { }
-
-        // Update Header UI
-        var isAdm = (userObj.role === 'ADMIN');
-        var roleBadge = $('headerRoleBadge');
-        roleBadge.textContent = userObj.role;
-        roleBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ' +
-          (isAdm ? 'bg-amber-400 text-amber-950 border border-amber-300' : 'bg-indigo-500 text-white');
-        roleBadge.classList.remove('hidden');
-
-        $('barUserName').textContent = userObj.name + ' (' + userObj.code + ')';
-        var barRole = $('barUserRole');
-        barRole.textContent = userObj.role;
-        barRole.className = 'px-1.5 py-0.2 rounded text-[10px] font-bold ' +
-          (isAdm ? 'bg-amber-400 text-amber-950' : 'bg-indigo-500 text-white');
-        $('activeUserBar').classList.remove('hidden');
-
-        if (isAdm) {
-          $('openEmailReportBtn').classList.remove('hidden');
-          $('backupDataBtn').classList.remove('hidden');
-        } else {
-          $('openEmailReportBtn').classList.add('hidden');
-          $('backupDataBtn').classList.add('hidden');
-        }
-
-        // Refresh Sales Person field configuration for current role
-        populateSalesPersonOptions();
-        updateSalesPersonFieldForRole();
-
-        // Check if there was an edit query parameter waiting for authentication
-        maybeOpenInitialEdit();
-      }
-
-      function logoutUser() {
-        state.currentUser = null;
-        saveSession(null);
-        $('headerRoleBadge').classList.add('hidden');
-        $('activeUserBar').classList.add('hidden');
-        $('openEmailReportBtn').classList.add('hidden');
-        $('backupDataBtn').classList.add('hidden');
-        showLoginModal();
-        showToast('Logged out successfully.');
-      }
-
-      // ---------- SALES PERSON FIELD ROLE ENFORCEMENT ----------
-      function updateSalesPersonFieldForRole() {
-        var sel = $('salesPerson');
-        var badge = $('salesPersonRoleBadge');
-        var help = $('salesPersonHelpText');
-        var lockIcon = $('salesPersonLockIcon');
-
-        if (!state.currentUser) {
-          sel.disabled = true;
-          lockIcon.classList.remove('hidden');
-          badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-700">Please Sign In</span>';
-          help.textContent = 'Sign in to record sales.';
-          return;
-        }
-
-        if (state.currentUser.role === 'ADMIN') {
-          // ADMIN: Can select and assign ANY salesperson!
-          sel.disabled = false;
-          sel.className = 'w-full rounded-xl border border-blue-400 bg-blue-50/40 px-3 py-2.5 text-sm font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none';
-          lockIcon.classList.add('hidden');
-          badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">Admin Mode • Any Rep Selectable</span>';
-          help.textContent = 'Admin role: You can set or reassign any sales person for this entry.';
-        } else {
-          // REGULAR SALES PERSON: Locked to their own account!
-          sel.value = state.currentUser.code;
-          sel.disabled = true;
-          sel.className = 'w-full rounded-xl border border-slate-300 bg-slate-100 cursor-not-allowed px-3 py-2.5 text-sm font-semibold text-slate-700';
-          lockIcon.classList.remove('hidden');
-          badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">Locked • ' + escapeHtml(state.currentUser.code) + '</span>';
-          help.textContent = 'Locked to ' + state.currentUser.name + ' (' + state.currentUser.code + '). Only Admin can reassign entries.';
-        }
-      }
-
-      function populateSalesPersonOptions(ensureCode) {
-        var sel = $('salesPerson');
-        var prevVal = ensureCode !== undefined ? ensureCode : sel.value;
-        var activeList = state.salesPersons.filter(function (sp) { return sp.active !== false; });
-        var html = '<option value="">Select Sales Person...</option>';
-        var hasPrev = false;
-
-        activeList.forEach(function (sp) {
-          if (sp.code === prevVal) hasPrev = true;
-          var roleTag = (sp.role === 'ADMIN') ? ' [Admin]' : '';
-          var label = (sp.name && sp.name !== sp.code ? (sp.code + ' — ' + sp.name) : sp.code) + roleTag;
-          html += '<option value="' + escapeHtml(sp.code) + '">' + escapeHtml(label) + '</option>';
-        });
-
-        // If editing an older entry whose rep is now inactive, still keep it selectable
-        if (prevVal && !hasPrev) {
-          var inactive = state.salesPersons.find(function (sp) { return sp.code === prevVal; });
-          var extraLabel = inactive ? (inactive.code + ' — ' + inactive.name + ' (Inactive)') : prevVal;
-          html += '<option value="' + escapeHtml(prevVal) + '">' + escapeHtml(extraLabel) + '</option>';
-        }
-
-        sel.innerHTML = html;
-
-        if (state.currentUser && state.currentUser.role !== 'ADMIN') {
-          sel.value = state.currentUser.code;
-        } else {
-          sel.value = prevVal || (state.currentUser ? state.currentUser.code : '');
-        }
-      }
-
-      function updateTargetTabBadge() {
-        var mo = $('month').value || currentCalMonth();
-        var yr = $('year').value || currentYear();
-        $('targetTabBadge').textContent = 'Tab: ' + mo + '-' + yr;
-      }
-
-      function populateRegionPills() {
-        var box = $('regionPills');
-        if (!box) return;
-        var regions = (state.regions && state.regions.length) ? state.regions : DEFAULT_REGIONS;
-        var currentVal = state.selectedRegion;
-        var html = '';
-        regions.forEach(function (reg) {
-          html += '<button type="button" data-val="' + escapeHtml(reg) + '" class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">' + escapeHtml(reg) + '</button>';
-        });
-        html += '<button type="button" data-val="__OTHER__" class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Other</button>';
-        box.innerHTML = html;
-        setPillValue('regionPills', 'selectedRegion', currentVal || regions[0] || 'R - Pune', 'regionOther');
-      }
-
-      function populateDashFYOptions() {
-        var curStart = fyStartYear(getCurrentFY());
-        var fySet = {};
-        for (var y = curStart - 1; y <= curStart + 5; y++) {
-          fySet['FY ' + String(y).slice(-2) + '-' + String(y + 1).slice(-2)] = true;
-        }
-        state.allEntries.forEach(function (e) {
-          var mo = getEntryMonth(e);
-          var yr = getEntryYear(e);
-          if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
-        });
-        var fys = Object.keys(fySet).sort();
-        var sel = $('dashFySelect');
-        sel.innerHTML = '<option value="ALL">All Years</option>' + fys.map(function (fy) {
-          return '<option value="' + fy + '"' + (state.dashFY === fy ? ' selected' : '') + '>' + fy + '</option>';
-        }).join('');
-        sel.value = state.dashFY;
-      }
-
-      var toastTimer = null;
-      function showToast(msg, isError) {
-        var el = $('toast');
-        el.textContent = msg;
-        el.className = 'fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold text-white max-w-sm text-center ' +
-          (isError ? 'bg-rose-600' : 'bg-emerald-700');
-        el.classList.remove('hidden');
-        if (toastTimer) clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { el.classList.add('hidden'); }, 3400);
-      }
-
-      // ---------- PILL GROUP CONTROLLER ----------
-      function setupPillGroup(containerId, stateKey, otherInputId, onChange) {
-        var box = $(containerId);
-        box.addEventListener('click', function (e) {
-          var btn = e.target.closest('button[data-val]');
-          if (!btn) return;
-          var val = btn.getAttribute('data-val');
-          state[stateKey] = val;
-          var allBtns = box.querySelectorAll('button[data-val]');
-          allBtns.forEach(function (b) {
-            b.classList.toggle('active', b === btn);
+          RKSalesDB.getOfflineAuth().then(function (cached) {
+            verifyAndLogin(cached);
+          }).catch(function () {
+            var cached = [];
+            try {
+              var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+              cached = raw ? JSON.parse(raw) : [];
+            } catch (e) { }
+            verifyAndLogin(cached);
           });
-          if (otherInputId) {
-            var otherEl = $(otherInputId);
-            if (val === '__OTHER__') {
-              otherEl.classList.remove('hidden');
-              otherEl.focus();
-            } else {
-              otherEl.classList.add('hidden');
-              otherEl.value = '';
-            }
+        }
+
+        function executeLogin(code, pin) {
+          if (!code) {
+            $('loginError').textContent = 'Please select your user profile.';
+            $('loginError').classList.remove('hidden');
+            return;
           }
-          if (onChange) onChange(val);
-        });
-      }
-
-      function setPillValue(containerId, stateKey, val, otherInputId) {
-        var box = $(containerId);
-        if (!box) {
-          state[stateKey] = String(val || '');
-          return;
-        }
-        var btns = Array.prototype.slice.call(box.querySelectorAll('button[data-val]'));
-        if (btns.length === 0) {
-          state[stateKey] = String(val || '');
-          return;
-        }
-        var match = btns.find(function (b) { return b.getAttribute('data-val') === String(val); });
-        var otherEl = otherInputId ? $(otherInputId) : null;
-
-        if (match) {
-          state[stateKey] = String(val);
-          btns.forEach(function (b) { b.classList.toggle('active', b === match); });
-          if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
-        } else if (otherEl && val !== '' && val !== null && val !== undefined) {
-          var otherBtn = btns.find(function (b) { return b.getAttribute('data-val') === '__OTHER__'; });
-          state[stateKey] = '__OTHER__';
-          btns.forEach(function (b) { b.classList.toggle('active', b === otherBtn); });
-          otherEl.classList.remove('hidden');
-          otherEl.value = val;
-        } else {
-          state[stateKey] = '';
-          btns.forEach(function (b) { b.classList.remove('active'); });
-          if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
-        }
-      }
-
-      // ---------- LIVE CALCULATIONS ----------
-      function getEffectiveCommPct() {
-        return state.selectedCommPct === '__OTHER__' ? toNum($('commPctOther').value) : toNum(state.selectedCommPct);
-      }
-
-      function updateLiveCalc() {
-        var pv = toNum($('productValue').value);
-        var fr = toNum($('freightCharges').value);
-        var gst = (pv + fr) * 0.18;
-        var total = pv + fr + gst;
-        var pct = (state.selectedCommType === 'F') ? 0 : (getEffectiveCommPct() / 100);
-        var commVal = pv * pct;
-        var commFix = (state.selectedCommType === 'P') ? 0 : toNum($('commissionFixed').value);
-        var totalComm = commVal + commFix;
-
-        $('calcGst').textContent = fmtINR(gst);
-        $('calcTotal').textContent = fmtINR(total);
-        $('calcCommPct').textContent = fmtINR(commVal);
-        $('calcCommTotal').textContent = fmtINR(totalComm);
-      }
-
-      // ---------- NAVIGATION ----------
-      function switchTab(tab) {
-        state.activeTab = tab;
-        $('viewForm').classList.toggle('hidden', tab !== 'form');
-        $('viewRecent').classList.toggle('hidden', tab !== 'recent');
-        $('viewDashboard').classList.toggle('hidden', tab !== 'dashboard');
-
-        document.querySelectorAll('.nav-btn').forEach(function (b) {
-          var isAct = b.getAttribute('data-tab') === tab;
-          b.classList.toggle('text-blue-800', isAct);
-          b.classList.toggle('font-bold', isAct);
-          b.classList.toggle('text-slate-500', !isAct);
-          b.classList.toggle('font-medium', !isAct);
-        });
-
-        if (tab === 'recent') renderRecentList();
-        if (tab === 'dashboard') renderDashboard();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-
-      // ---------- FORM RESET ----------
-      function resetForm(scrollToTop) {
-        $('salesForm').reset();
-        $('responseId').value = '';
-        $('month').value = currentCalMonth();
-        $('year').value = currentYear();
-        $('partyName').value = '';
-        $('poNo').value = 'VERBAL';
-        $('poDate').value = todayIso();
-        $('piNo').value = getFyPrefix() + '-';
-        $('piDate').value = '';
-        $('invoiceNo').value = '';
-        $('invoiceDate').value = '';
-        $('productKeyword').value = 'LS';
-        updateProdKeywordPillStates();
-        $('productName').value = '';
-        $('poValue').value = '';
-        $('productValue').value = '';
-        delete $('productValue').dataset.userEdited;
-        delete $('productValue').dataset.lastPoVal;
-        $('freightCharges').value = '';
-        $('commissionFixed').value = '';
-        $('remark').value = '';
-        $('accountsRemark').value = '';
-        $('revisitCheckbox').checked = false;
-        setPillValue('regionPills', 'selectedRegion', (state.regions && state.regions[0]) || 'R - Pune', 'regionOther');
-        setPillValue('commTypePills', 'selectedCommType', 'P');
-        updateCommTypeState('P');
-        setPillValue('commPctPills', 'selectedCommPct', '5', 'commPctOther');
-        setPillValue('termsPills', 'selectedTerms', 'PI', 'termsOther');
-        setPillValue('statusPills', 'selectedStatus', 'RCD');
-        setPillValue('wbPills', 'selectedWB', 'B');
-        $('editBanner').classList.add('hidden');
-        $('submitBtnText').textContent = 'Save Sales Entry';
-
-        populateSalesPersonOptions();
-        updateSalesPersonFieldForRole();
-        updateTargetTabBadge();
-        updateLiveCalc();
-        if (scrollToTop) window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-
-      function loadEntryForEdit(entry) {
-        if (!state.currentUser) {
-          showLoginModal();
-          showToast('Please sign in first to edit entries.', true);
-          return;
-        }
-
-        // Permission check: Non-admins cannot edit entries of other salespersons!
-        var isAdm = (state.currentUser.role === 'ADMIN');
-        var isOwner = (entry.salesPerson && entry.salesPerson.toUpperCase() === state.currentUser.code.toUpperCase());
-        if (!isAdm && !isOwner) {
-          showToast('Permission denied: You can only edit your own entries (' + state.currentUser.code + '). Contact Admin to edit #' + entry.srNo + '.', true);
-          return;
-        }
-
-        $('responseId').value = entry.responseId || '';
-
-        // Robust month population
-        var mVal = getEntryMonth(entry);
-        if (mVal && CAL_MONTHS.indexOf(mVal) !== -1) {
-          $('month').value = mVal;
-        }
-
-        // Robust year population
-        var yVal = getEntryYear(entry);
-        if (yVal) {
-          if (!$('year').querySelector('option[value="' + yVal + '"]')) {
-            var opt = document.createElement('option');
-            opt.value = yVal;
-            opt.textContent = yVal;
-            $('year').appendChild(opt);
-          }
-          $('year').value = yVal;
-        }
-
-        populateSalesPersonOptions(entry.salesPerson || '');
-        if (isAdm) {
-          $('salesPerson').disabled = false;
-          $('salesPerson').value = entry.salesPerson || '';
-        } else {
-          $('salesPerson').disabled = true;
-          $('salesPerson').value = state.currentUser.code;
-        }
-        updateSalesPersonFieldForRole();
-
-        $('partyName').value = entry.partyName || '';
-        $('revisitCheckbox').checked = !!entry.revisit;
-        setPillValue('regionPills', 'selectedRegion', entry.region || (state.regions && state.regions[0]) || 'R - Pune', 'regionOther');
-        $('poNo').value = entry.poNo || 'VERBAL';
-        $('poDate').value = entry.poDate || '';
-        $('piNo').value = entry.piNo || getFyPrefix() + '-';
-        $('piDate').value = entry.piDate || '';
-        $('invoiceNo').value = entry.invoiceNo || '';
-        $('invoiceDate').value = entry.invoiceDate || '';
-        $('productKeyword').value = entry.productKeyword || '';
-        updateProdKeywordPillStates();
-        $('productName').value = entry.productName || '';
-        $('poValue').value = entry.poValue !== undefined && entry.poValue !== null ? entry.poValue : '';
-        $('productValue').value = entry.productValue !== undefined && entry.productValue !== null ? entry.productValue : '';
-        $('productValue').dataset.userEdited = 'true';
-        $('freightCharges').value = entry.freightCharges !== undefined && entry.freightCharges !== null ? entry.freightCharges : '';
-        setPillValue('commTypePills', 'selectedCommType', entry.commissionType || 'P');
-        updateCommTypeState(entry.commissionType || 'P');
-        setPillValue('commPctPills', 'selectedCommPct', String(entry.commissionPct), 'commPctOther');
-        $('commissionFixed').value = entry.commissionFixed || '';
-        setPillValue('termsPills', 'selectedTerms', entry.paymentTerms || '', 'termsOther');
-        setPillValue('statusPills', 'selectedStatus', entry.paymentStatus || 'RCD');
-        setPillValue('wbPills', 'selectedWB', entry.wbBilling || 'B');
-        $('remark').value = entry.remark || '';
-        $('accountsRemark').value = entry.accountsRemark || '';
-
-        $('editBannerTitle').innerHTML =
-          '<span class="px-2 py-0.5 rounded-md bg-blue-800 text-white shadow-sm">#' + escapeHtml(entry.srNo) + '</span>' +
-          '<span>Editing ' + escapeHtml(entry.partyName || 'Entry') + ' • Rep: ' + escapeHtml(entry.salesPerson || '') + '</span>';
-        $('editBanner').classList.remove('hidden');
-        $('submitBtnText').textContent = 'Update Entry #' + entry.srNo;
-        updateTargetTabBadge();
-        updateLiveCalc();
-        switchTab('form');
-      }
-
-      // ---------- DATA SYNC (LIVE GAS OR PREVIEW) ----------
-      function savePreviewStorage() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.allEntries)); } catch (e) { }
-      }
-
-      function loadPreviewStorage() {
-        try {
-          var raw = localStorage.getItem(STORAGE_KEY);
-          if (raw) return JSON.parse(raw);
-        } catch (e) { }
-        return [];
-      }
-
-      function loadPendingQueue() {
-        try {
-          var raw = localStorage.getItem(PENDING_QUEUE_KEY);
-          var queue = raw ? JSON.parse(raw) : [];
-          return Array.isArray(queue) ? queue : [];
-        } catch (e) { return []; }
-      }
-
-      function savePendingQueue(queue) {
-        try { localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue || [])); } catch (e) { }
-        updateConnectionStatus();
-      }
-
-      function enqueuePendingPayload(payload) {
-        var queue = loadPendingQueue();
-        queue.push({
-          payload: Object.assign({}, payload),
-          queuedAt: new Date().toISOString()
-        });
-        savePendingQueue(queue);
-        RKSalesDB.addPendingSync(payload).then(function () {
-          updateConnectionStatus();
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ type: 'PENDING_ENQUEUED' });
-          }
-        }).catch(function () {
-          updateConnectionStatus();
-        });
-      }
-
-      function updateConnectionStatus() {
-        RKSalesDB.getPendingSync().then(function (queue) {
-          renderConnectionUI(queue.length);
-        }).catch(function () {
-          renderConnectionUI(loadPendingQueue().length);
-        });
-      }
-
-      function renderConnectionUI(pending) {
-        state.pendingCount = pending;
-        var online = isAppOnline();
-        var label = state.forceOffline ? 'Manual Offline' : (navigator.onLine !== false ? 'Online' : 'Offline');
-        if (pending) label += ' • ' + pending + ' pending sync';
-
-        var subtitle = $('modeSubtitle');
-        if (subtitle) {
-          subtitle.textContent = IS_LIVE_GAS
-            ? label + ' • Google Sheets'
-            : label + ' • Local Preview';
-        }
-
-        var refresh = $('refreshBtn');
-        if (refresh) {
-          refresh.textContent = pending ? 'Sync (' + pending + ')' : (online ? 'Sync' : 'Offline');
-          refresh.title = pending
-            ? 'Sync ' + pending + ' pending change' + (pending === 1 ? '' : 's')
-            : 'Sync with Google Sheets';
-        }
-
-        var badge = $('syncBadge');
-        var countBadge = $('syncCountBadge');
-        if (badge && countBadge) {
-          countBadge.textContent = pending;
-          if (pending > 0) badge.classList.remove('hidden');
-          else badge.classList.add('hidden');
-        }
-        updateOfflineModeUI();
-      }
-
-      function registerPwa() {
-        if (!('serviceWorker' in navigator)) return;
-        try {
-          // Google Apps Script Web Apps execute inside an iframe on script.googleusercontent.com.
-          // Service workers cannot be registered inside sandboxed iframes or on file/preview origins,
-          // because requesting ?pwa=sw on those origins returns HTML ('text/html') instead of JavaScript,
-          // causing the browser to throw "The script has an unsupported MIME type ('text/html')".
-          var isRestrictedContext = (typeof location !== 'undefined') && (
-            (window.self !== window.top) ||
-            location.hostname.indexOf('googleusercontent.com') !== -1 ||
-            location.hostname.indexOf('google.com') !== -1 ||
-            location.protocol === 'file:' ||
-            !IS_LIVE_GAS
-          );
-
-          if (isRestrictedContext) {
-            // Clean up any stale registrations on this scope to prevent persistent browser console warnings
-            if (navigator.serviceWorker.getRegistrations) {
-              navigator.serviceWorker.getRegistrations().then(function (registrations) {
-                if (registrations && registrations.length) {
-                  for (var i = 0; i < registrations.length; i++) {
-                    registrations[i].unregister();
-                  }
-                }
-              }).catch(function () { });
-            }
+          if (!pin || pin.length < 4) {
+            $('loginError').textContent = 'Please enter a 4-digit PIN.';
+            $('loginError').classList.remove('hidden');
             return;
           }
 
-          var swUrl = new URL(window.location.href);
-          swUrl.search = 'pwa=sw';
-          navigator.serviceWorker.register(swUrl.href).catch(function () { });
+          $('loginError').classList.add('hidden');
+          var btn = $('loginSubmitBtn');
+          btn.disabled = true;
+          btn.textContent = 'Verifying...';
 
-          // Preflight verification: verify Content-Type before registering to prevent MIME type errors
-          if (typeof fetch === 'function') {
-            fetch(swUrl.href, { method: 'HEAD' })
-              .then(function (res) {
-                var ct = (res.headers && res.headers.get('content-type')) || '';
-                if (ct.toLowerCase().indexOf('javascript') !== -1) {
-                  navigator.serviceWorker.register(swUrl.href).catch(function () { });
+          if (IS_LIVE_GAS && isAppOnline()) {
+            var handled = false;
+            var loginTimeout = setTimeout(function () {
+              if (!handled) {
+                handled = true;
+                console.warn('Apps Script login timed out; falling back to offline check.');
+                localLogin(code, pin, btn);
+              }
+            }, 9000);
+
+            google.script.run
+              .withSuccessHandler(function (res) {
+                if (handled) return;
+                handled = true;
+                if (loginTimeout) clearTimeout(loginTimeout);
+                btn.disabled = false;
+                btn.textContent = 'Unlock & Sign In';
+                if (res && res.ok && res.user) {
+                  var userObj = {
+                    code: res.user.code,
+                    name: res.user.name,
+                    role: res.user.role || 'SALES',
+                    pin: pin
+                  };
+                  cacheOfflineCredential(userObj);
+                  setAuthenticatedUser(userObj);
+                  hideLoginModal();
+                  showToast('Welcome, ' + userObj.name + '! (' + userObj.role + ')');
+                } else {
+                  $('loginError').textContent = (res && res.message) ? res.message : 'Invalid PIN.';
+                  $('loginError').classList.remove('hidden');
+                  clearPin();
                 }
               })
-              .catch(function () { });
+              .withFailureHandler(function (err) {
+                if (handled) return;
+                handled = true;
+                if (loginTimeout) clearTimeout(loginTimeout);
+                // Apps Script can be unreachable while isAppOnline is
+                // still true. Fall back to the last credential cached online.
+                localLogin(code, pin, btn);
+              })
+              .loginUser(code, pin);
+          } else {
+            // Offline/Preview Mode local login.
+            setTimeout(function () { localLogin(code, pin, btn); }, 150);
           }
-        } catch (e) { }
-      }
-
-      function setupPwaInstallButton() {
-        var btn = $('installPwaBtn');
-        if (!btn) return;
-        var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-        if (standalone || (window.navigator && window.navigator.standalone === true)) {
-          btn.classList.add('hidden');
-          return;
         }
-        // Keep a visible button even when the browser has not exposed
-        // beforeinstallprompt yet; the click handler gives manual instructions.
-        btn.classList.remove('hidden');
-        window.addEventListener('beforeinstallprompt', function (event) {
-          event.preventDefault();
-          deferredInstallPrompt = event;
-          btn.textContent = 'Install App';
-        });
-        window.addEventListener('appinstalled', function () {
-          deferredInstallPrompt = null;
-          btn.classList.add('hidden');
-          showToast('RK Sales installed successfully');
-        });
-        btn.addEventListener('click', function () {
-          if (!deferredInstallPrompt) {
-            showToast('Use the browser menu → Install RK Sales (open the app online first).', false);
+
+        function setAuthenticatedUser(userObj) {
+          state.currentUser = userObj;
+          saveSession(userObj);
+          try { localStorage.setItem('rk_sales_last_user_code', userObj.code); } catch (e) { }
+
+          // Update Header UI
+          var isAdm = (userObj.role === 'ADMIN');
+          var roleBadge = $('headerRoleBadge');
+          roleBadge.textContent = userObj.role;
+          roleBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ' +
+            (isAdm ? 'bg-amber-400 text-amber-950 border border-amber-300' : 'bg-indigo-500 text-white');
+          roleBadge.classList.remove('hidden');
+
+          $('barUserName').textContent = userObj.name + ' (' + userObj.code + ')';
+          var barRole = $('barUserRole');
+          barRole.textContent = userObj.role;
+          barRole.className = 'px-1.5 py-0.2 rounded text-[10px] font-bold ' +
+            (isAdm ? 'bg-amber-400 text-amber-950' : 'bg-indigo-500 text-white');
+          $('activeUserBar').classList.remove('hidden');
+
+          if (isAdm) {
+            $('openEmailReportBtn').classList.remove('hidden');
+            $('backupDataBtn').classList.remove('hidden');
+          } else {
+            $('openEmailReportBtn').classList.add('hidden');
+            $('backupDataBtn').classList.add('hidden');
+          }
+
+          // Refresh Sales Person field configuration for current role
+          populateSalesPersonOptions();
+          updateSalesPersonFieldForRole();
+
+          // Check if there was an edit query parameter waiting for authentication
+          maybeOpenInitialEdit();
+        }
+
+        function logoutUser() {
+          state.currentUser = null;
+          saveSession(null);
+          $('headerRoleBadge').classList.add('hidden');
+          $('activeUserBar').classList.add('hidden');
+          $('openEmailReportBtn').classList.add('hidden');
+          $('backupDataBtn').classList.add('hidden');
+          showLoginModal();
+          showToast('Logged out successfully.');
+        }
+
+        // ---------- SALES PERSON FIELD ROLE ENFORCEMENT ----------
+        function updateSalesPersonFieldForRole() {
+          var sel = $('salesPerson');
+          var badge = $('salesPersonRoleBadge');
+          var help = $('salesPersonHelpText');
+          var lockIcon = $('salesPersonLockIcon');
+
+          if (!state.currentUser) {
+            sel.disabled = true;
+            lockIcon.classList.remove('hidden');
+            badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-700">Please Sign In</span>';
+            help.textContent = 'Sign in to record sales.';
             return;
           }
-          deferredInstallPrompt.prompt();
-          deferredInstallPrompt.userChoice.then(function (choice) {
-            if (choice && choice.outcome === 'accepted') btn.classList.add('hidden');
-            deferredInstallPrompt = null;
+
+          if (state.currentUser.role === 'ADMIN') {
+            // ADMIN: Can select and assign ANY salesperson!
+            sel.disabled = false;
+            sel.className = 'w-full rounded-xl border border-blue-400 bg-blue-50/40 px-3 py-2.5 text-sm font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none';
+            lockIcon.classList.add('hidden');
+            badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">Admin Mode • Any Rep Selectable</span>';
+            help.textContent = 'Admin role: You can set or reassign any sales person for this entry.';
+          } else {
+            // REGULAR SALES PERSON: Locked to their own account!
+            sel.value = state.currentUser.code;
+            sel.disabled = true;
+            sel.className = 'w-full rounded-xl border border-slate-300 bg-slate-100 cursor-not-allowed px-3 py-2.5 text-sm font-semibold text-slate-700';
+            lockIcon.classList.remove('hidden');
+            badge.innerHTML = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">Locked • ' + escapeHtml(state.currentUser.code) + '</span>';
+            help.textContent = 'Locked to ' + state.currentUser.name + ' (' + state.currentUser.code + '). Only Admin can reassign entries.';
+          }
+        }
+
+        function populateSalesPersonOptions(ensureCode) {
+          var sel = $('salesPerson');
+          var prevVal = ensureCode !== undefined ? ensureCode : sel.value;
+          var activeList = state.salesPersons.filter(function (sp) { return sp.active !== false; });
+          var html = '<option value="">Select Sales Person...</option>';
+          var hasPrev = false;
+
+          activeList.forEach(function (sp) {
+            if (sp.code === prevVal) hasPrev = true;
+            var roleTag = (sp.role === 'ADMIN') ? ' [Admin]' : '';
+            var label = (sp.name && sp.name !== sp.code ? (sp.code + ' — ' + sp.name) : sp.code) + roleTag;
+            html += '<option value="' + escapeHtml(sp.code) + '">' + escapeHtml(label) + '</option>';
           });
-        });
-      }
 
-      function flushPendingQueue(done) {
-        if (state.isSyncing) {
-          if (done) done();
-          return;
+          // If editing an older entry whose rep is now inactive, still keep it selectable
+          if (prevVal && !hasPrev) {
+            var inactive = state.salesPersons.find(function (sp) { return sp.code === prevVal; });
+            var extraLabel = inactive ? (inactive.code + ' — ' + inactive.name + ' (Inactive)') : prevVal;
+            html += '<option value="' + escapeHtml(prevVal) + '">' + escapeHtml(extraLabel) + '</option>';
+          }
+
+          sel.innerHTML = html;
+
+          if (state.currentUser && state.currentUser.role !== 'ADMIN') {
+            sel.value = state.currentUser.code;
+          } else {
+            sel.value = prevVal || (state.currentUser ? state.currentUser.code : '');
+          }
         }
-        if (!IS_LIVE_GAS || !isAppOnline()) {
+
+        function updateTargetTabBadge() {
+          var mo = $('month').value || currentCalMonth();
+          var yr = $('year').value || currentYear();
+          $('targetTabBadge').textContent = 'Tab: ' + mo + '-' + yr;
+        }
+
+        function populateRegionPills() {
+          var box = $('regionPills');
+          if (!box) return;
+          var regions = (state.regions && state.regions.length) ? state.regions : DEFAULT_REGIONS;
+          var currentVal = state.selectedRegion;
+          var html = '';
+          regions.forEach(function (reg) {
+            html += '<button type="button" data-val="' + escapeHtml(reg) + '" class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">' + escapeHtml(reg) + '</button>';
+          });
+          html += '<button type="button" data-val="__OTHER__" class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Other</button>';
+          box.innerHTML = html;
+          setPillValue('regionPills', 'selectedRegion', currentVal || regions[0] || 'R - Pune', 'regionOther');
+
+          var isInList = regions.indexOf(currentVal) !== -1;
+          var otherInput = $('regionOther');
+          var isOtherActive = otherInput && otherInput.value && !otherInput.classList.contains('hidden');
+          var targetVal = isInList ? currentVal : (isOtherActive ? currentVal : (regions[0] || 'R - Pune'));
+          setPillValue('regionPills', 'selectedRegion', targetVal, 'regionOther');
+        }
+
+        function populateDashFYOptions() {
+          var curStart = fyStartYear(getCurrentFY());
+          var fySet = {};
+          for (var y = curStart - 1; y <= curStart + 5; y++) {
+            fySet['FY ' + String(y).slice(-2) + '-' + String(y + 1).slice(-2)] = true;
+          }
+          state.allEntries.forEach(function (e) {
+            var mo = getEntryMonth(e);
+            var yr = getEntryYear(e);
+            if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
+          });
+          var fys = Object.keys(fySet).sort();
+          var sel = $('dashFySelect');
+          sel.innerHTML = '<option value="ALL">All Years</option>' + fys.map(function (fy) {
+            return '<option value="' + fy + '"' + (state.dashFY === fy ? ' selected' : '') + '>' + fy + '</option>';
+          }).join('');
+          sel.value = state.dashFY;
+        }
+
+        var toastTimer = null;
+        function showToast(msg, isError) {
+          var el = $('toast');
+          el.textContent = msg;
+          el.className = 'fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold text-white max-w-sm text-center ' +
+            (isError ? 'bg-rose-600' : 'bg-emerald-700');
+          el.classList.remove('hidden');
+          if (toastTimer) clearTimeout(toastTimer);
+          toastTimer = setTimeout(function () { el.classList.add('hidden'); }, 3400);
+        }
+
+        // ---------- PILL GROUP CONTROLLER ----------
+        function setupPillGroup(containerId, stateKey, otherInputId, onChange) {
+          var box = $(containerId);
+          box.addEventListener('click', function (e) {
+            var btn = e.target.closest('button[data-val]');
+            if (!btn) return;
+            var val = btn.getAttribute('data-val');
+            state[stateKey] = val;
+            var allBtns = box.querySelectorAll('button[data-val]');
+            allBtns.forEach(function (b) {
+              b.classList.toggle('active', b === btn);
+            });
+            if (otherInputId) {
+              var otherEl = $(otherInputId);
+              if (val === '__OTHER__') {
+                otherEl.classList.remove('hidden');
+                otherEl.focus();
+              } else {
+                otherEl.classList.add('hidden');
+                otherEl.value = '';
+              }
+            }
+            if (onChange) onChange(val);
+          });
+        }
+
+        function setPillValue(containerId, stateKey, val, otherInputId) {
+          var box = $(containerId);
+          if (!box) {
+            state[stateKey] = String(val || '');
+            return;
+          }
+          var btns = Array.prototype.slice.call(box.querySelectorAll('button[data-val]'));
+          if (btns.length === 0) {
+            state[stateKey] = String(val || '');
+            return;
+          }
+          var match = btns.find(function (b) { return b.getAttribute('data-val') === String(val); });
+          var otherEl = otherInputId ? $(otherInputId) : null;
+
+          if (match) {
+            state[stateKey] = String(val);
+            btns.forEach(function (b) { b.classList.toggle('active', b === match); });
+            if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
+          } else if (otherEl && val !== '' && val !== null && val !== undefined) {
+            var otherBtn = btns.find(function (b) { return b.getAttribute('data-val') === '__OTHER__'; });
+            state[stateKey] = '__OTHER__';
+            btns.forEach(function (b) { b.classList.toggle('active', b === otherBtn); });
+            otherEl.classList.remove('hidden');
+            otherEl.value = val;
+          } else {
+            state[stateKey] = '';
+            btns.forEach(function (b) { b.classList.remove('active'); });
+            if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
+          }
+        }
+
+        // ---------- LIVE CALCULATIONS ----------
+        function getEffectiveCommPct() {
+          return state.selectedCommPct === '__OTHER__' ? toNum($('commPctOther').value) : toNum(state.selectedCommPct);
+        }
+
+        function updateLiveCalc() {
+          var pv = toNum($('productValue').value);
+          var fr = toNum($('freightCharges').value);
+          var gst = (pv + fr) * 0.18;
+          var total = pv + fr + gst;
+          var pct = (state.selectedCommType === 'F') ? 0 : (getEffectiveCommPct() / 100);
+          var commVal = pv * pct;
+          var commFix = (state.selectedCommType === 'P') ? 0 : toNum($('commissionFixed').value);
+          var totalComm = commVal + commFix;
+
+          $('calcGst').textContent = fmtINR(gst);
+          $('calcTotal').textContent = fmtINR(total);
+          $('calcCommPct').textContent = fmtINR(commVal);
+          $('calcCommTotal').textContent = fmtINR(totalComm);
+        }
+
+        // ---------- NAVIGATION ----------
+        function switchTab(tab) {
+          state.activeTab = tab;
+          $('viewForm').classList.toggle('hidden', tab !== 'form');
+          $('viewRecent').classList.toggle('hidden', tab !== 'recent');
+          $('viewDashboard').classList.toggle('hidden', tab !== 'dashboard');
+
+          document.querySelectorAll('.nav-btn').forEach(function (b) {
+            var isAct = b.getAttribute('data-tab') === tab;
+            b.classList.toggle('text-blue-800', isAct);
+            b.classList.toggle('font-bold', isAct);
+            b.classList.toggle('text-slate-500', !isAct);
+            b.classList.toggle('font-medium', !isAct);
+          });
+
+          if (tab === 'recent') renderRecentList();
+          if (tab === 'dashboard') renderDashboard();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ---------- FORM RESET ----------
+        function resetForm(scrollToTop) {
+          $('salesForm').reset();
+          $('responseId').value = '';
+          $('month').value = currentCalMonth();
+          $('year').value = currentYear();
+          $('partyName').value = '';
+          $('poNo').value = 'VERBAL';
+          $('poDate').value = todayIso();
+          $('piNo').value = getFyPrefix() + '-';
+          $('piDate').value = '';
+          $('invoiceNo').value = '';
+          $('invoiceDate').value = '';
+          $('productKeyword').value = 'LS';
+          updateProdKeywordPillStates();
+          $('productName').value = '';
+          $('poValue').value = '';
+          $('productValue').value = '';
+          delete $('productValue').dataset.userEdited;
+          delete $('productValue').dataset.lastPoVal;
+          $('freightCharges').value = '';
+          $('commissionFixed').value = '';
+          $('remark').value = '';
+          $('accountsRemark').value = '';
+          $('revisitCheckbox').checked = false;
+          setPillValue('regionPills', 'selectedRegion', (state.regions && state.regions[0]) || 'R - Pune', 'regionOther');
+          setPillValue('commTypePills', 'selectedCommType', 'P');
+          updateCommTypeState('P');
+          setPillValue('commPctPills', 'selectedCommPct', '5', 'commPctOther');
+          setPillValue('termsPills', 'selectedTerms', 'PI', 'termsOther');
+          setPillValue('statusPills', 'selectedStatus', 'RCD');
+          setPillValue('wbPills', 'selectedWB', 'B');
+          $('editBanner').classList.add('hidden');
+          $('submitBtnText').textContent = 'Save Sales Entry';
+
+          populateSalesPersonOptions();
+          updateSalesPersonFieldForRole();
+          updateTargetTabBadge();
+          updateLiveCalc();
+          if (scrollToTop) window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function loadEntryForEdit(entry) {
+          if (!state.currentUser) {
+            showLoginModal();
+            showToast('Please sign in first to edit entries.', true);
+            return;
+          }
+
+          // Permission check: Non-admins cannot edit entries of other salespersons!
+          var isAdm = (state.currentUser.role === 'ADMIN');
+          var isOwner = (entry.salesPerson && entry.salesPerson.toUpperCase() === state.currentUser.code.toUpperCase());
+          if (!isAdm && !isOwner) {
+            showToast('Permission denied: You can only edit your own entries (' + state.currentUser.code + '). Contact Admin to edit #' + entry.srNo + '.', true);
+            return;
+          }
+
+          $('responseId').value = entry.responseId || '';
+
+          // Robust month population
+          var mVal = getEntryMonth(entry);
+          if (mVal && CAL_MONTHS.indexOf(mVal) !== -1) {
+            $('month').value = mVal;
+          }
+
+          // Robust year population
+          var yVal = getEntryYear(entry);
+          if (yVal) {
+            if (!$('year').querySelector('option[value="' + yVal + '"]')) {
+              var opt = document.createElement('option');
+              opt.value = yVal;
+              opt.textContent = yVal;
+              $('year').appendChild(opt);
+            }
+            $('year').value = yVal;
+          }
+
+          populateSalesPersonOptions(entry.salesPerson || '');
+          if (isAdm) {
+            $('salesPerson').disabled = false;
+            $('salesPerson').value = entry.salesPerson || '';
+          } else {
+            $('salesPerson').disabled = true;
+            $('salesPerson').value = state.currentUser.code;
+          }
+          updateSalesPersonFieldForRole();
+
+          $('partyName').value = entry.partyName || '';
+          $('revisitCheckbox').checked = !!entry.revisit;
+          setPillValue('regionPills', 'selectedRegion', entry.region || (state.regions && state.regions[0]) || 'R - Pune', 'regionOther');
+          $('poNo').value = entry.poNo || 'VERBAL';
+          $('poDate').value = entry.poDate || '';
+          $('piNo').value = entry.piNo || getFyPrefix() + '-';
+          $('piDate').value = entry.piDate || '';
+          $('invoiceNo').value = entry.invoiceNo || '';
+          $('invoiceDate').value = entry.invoiceDate || '';
+          $('productKeyword').value = entry.productKeyword || '';
+          updateProdKeywordPillStates();
+          $('productName').value = entry.productName || '';
+          $('poValue').value = entry.poValue !== undefined && entry.poValue !== null ? entry.poValue : '';
+          $('productValue').value = entry.productValue !== undefined && entry.productValue !== null ? entry.productValue : '';
+          $('productValue').dataset.userEdited = 'true';
+          $('freightCharges').value = entry.freightCharges !== undefined && entry.freightCharges !== null ? entry.freightCharges : '';
+          setPillValue('commTypePills', 'selectedCommType', entry.commissionType || 'P');
+          updateCommTypeState(entry.commissionType || 'P');
+          setPillValue('commPctPills', 'selectedCommPct', String(entry.commissionPct), 'commPctOther');
+          $('commissionFixed').value = entry.commissionFixed || '';
+          setPillValue('termsPills', 'selectedTerms', entry.paymentTerms || '', 'termsOther');
+          setPillValue('statusPills', 'selectedStatus', entry.paymentStatus || 'RCD');
+          setPillValue('wbPills', 'selectedWB', entry.wbBilling || 'B');
+          $('remark').value = entry.remark || '';
+          $('accountsRemark').value = entry.accountsRemark || '';
+
+          $('editBannerTitle').innerHTML =
+            '<span class="px-2 py-0.5 rounded-md bg-blue-800 text-white shadow-sm">#' + escapeHtml(entry.srNo) + '</span>' +
+            '<span>Editing ' + escapeHtml(entry.partyName || 'Entry') + ' • Rep: ' + escapeHtml(entry.salesPerson || '') + '</span>';
+          $('editBanner').classList.remove('hidden');
+          $('submitBtnText').textContent = 'Update Entry #' + entry.srNo;
+          updateTargetTabBadge();
+          updateLiveCalc();
+          switchTab('form');
+        }
+
+        // ---------- DATA SYNC (LIVE GAS OR PREVIEW) ----------
+        function savePreviewStorage() {
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.allEntries)); } catch (e) { }
+        }
+
+        function loadPreviewStorage() {
+          try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) return JSON.parse(raw);
+          } catch (e) { }
+          return [];
+        }
+
+        function loadPendingQueue() {
+          try {
+            var raw = localStorage.getItem(PENDING_QUEUE_KEY);
+            var queue = raw ? JSON.parse(raw) : [];
+            return Array.isArray(queue) ? queue : [];
+          } catch (e) { return []; }
+        }
+
+        function savePendingQueue(queue) {
+          try { localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue || [])); } catch (e) { }
           updateConnectionStatus();
-          if (done) done();
-          return;
         }
 
-        RKSalesDB.getPendingSync().then(function (queue) {
-          if (!queue || !queue.length) {
-            state.isSyncing = false;
+        function enqueuePendingPayload(payload) {
+          var queue = loadPendingQueue();
+          queue.push({
+            payload: Object.assign({}, payload),
+            queuedAt: new Date().toISOString()
+          });
+          savePendingQueue(queue);
+          RKSalesDB.addPendingSync(payload).then(function () {
+            updateConnectionStatus();
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'PENDING_ENQUEUED' });
+            }
+          }).catch(function () {
+            updateConnectionStatus();
+          });
+        }
+
+        function updateConnectionStatus() {
+          RKSalesDB.getPendingSync().then(function (queue) {
+            renderConnectionUI(queue.length);
+          }).catch(function () {
+            renderConnectionUI(loadPendingQueue().length);
+          });
+        }
+
+        function renderConnectionUI(pending) {
+          state.pendingCount = pending;
+          var online = isAppOnline();
+          var label = state.forceOffline ? 'Manual Offline' : (navigator.onLine !== false ? 'Online' : 'Offline');
+          if (pending) label += ' • ' + pending + ' pending sync';
+
+          var subtitle = $('modeSubtitle');
+          if (subtitle) {
+            subtitle.textContent = IS_LIVE_GAS
+              ? label + ' • Google Sheets'
+              : label + ' • Local Preview';
+          }
+
+          var refresh = $('refreshBtn');
+          if (refresh) {
+            refresh.textContent = pending ? 'Sync (' + pending + ')' : (online ? 'Sync' : 'Offline');
+            refresh.title = pending
+              ? 'Sync ' + pending + ' pending change' + (pending === 1 ? '' : 's')
+              : 'Sync with Google Sheets';
+          }
+
+          var badge = $('syncBadge');
+          var countBadge = $('syncCountBadge');
+          if (badge && countBadge) {
+            countBadge.textContent = pending;
+            if (pending > 0) badge.classList.remove('hidden');
+            else badge.classList.add('hidden');
+          }
+          updateOfflineModeUI();
+        }
+
+        function registerPwa() {
+          if (!('serviceWorker' in navigator)) return;
+          try {
+            // Google Apps Script Web Apps execute inside an iframe on script.googleusercontent.com.
+            // Service workers cannot be registered inside sandboxed iframes or on file/preview origins,
+            // because requesting ?pwa=sw on those origins returns HTML ('text/html') instead of JavaScript,
+            // causing the browser to throw "The script has an unsupported MIME type ('text/html')".
+            var isRestrictedContext = (typeof location !== 'undefined') && (
+              (window.self !== window.top) ||
+              location.hostname.indexOf('googleusercontent.com') !== -1 ||
+              location.hostname.indexOf('google.com') !== -1 ||
+              location.protocol === 'file:' ||
+              !IS_LIVE_GAS
+            );
+
+            if (isRestrictedContext) {
+              // Clean up any stale registrations on this scope to prevent persistent browser console warnings
+              if (navigator.serviceWorker.getRegistrations) {
+                navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                  if (registrations && registrations.length) {
+                    for (var i = 0; i < registrations.length; i++) {
+                      registrations[i].unregister();
+                    }
+                  }
+                }).catch(function () { });
+              }
+              return;
+            }
+
+            var swUrl = new URL(window.location.href);
+            swUrl.search = 'pwa=sw';
+            navigator.serviceWorker.register(swUrl.href).catch(function () { });
+
+            // Preflight verification: verify Content-Type before registering to prevent MIME type errors
+            if (typeof fetch === 'function') {
+              fetch(swUrl.href, { method: 'HEAD' })
+                .then(function (res) {
+                  var ct = (res.headers && res.headers.get('content-type')) || '';
+                  if (ct.toLowerCase().indexOf('javascript') !== -1) {
+                    navigator.serviceWorker.register(swUrl.href).catch(function () { });
+                  }
+                })
+                .catch(function () { });
+            }
+          } catch (e) { }
+        }
+
+        function setupPwaInstallButton() {
+          var btn = $('installPwaBtn');
+          if (!btn) return;
+          var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+          if (standalone || (window.navigator && window.navigator.standalone === true)) {
+            btn.classList.add('hidden');
+            return;
+          }
+          // Keep a visible button even when the browser has not exposed
+          // beforeinstallprompt yet; the click handler gives manual instructions.
+          btn.classList.remove('hidden');
+          window.addEventListener('beforeinstallprompt', function (event) {
+            event.preventDefault();
+            deferredInstallPrompt = event;
+            btn.textContent = 'Install App';
+          });
+          window.addEventListener('appinstalled', function () {
+            deferredInstallPrompt = null;
+            btn.classList.add('hidden');
+            showToast('RK Sales installed successfully');
+          });
+          btn.addEventListener('click', function () {
+            if (!deferredInstallPrompt) {
+              showToast('Use the browser menu → Install RK Sales (open the app online first).', false);
+              return;
+            }
+            deferredInstallPrompt.prompt();
+            deferredInstallPrompt.userChoice.then(function (choice) {
+              if (choice && choice.outcome === 'accepted') btn.classList.add('hidden');
+              deferredInstallPrompt = null;
+            });
+          });
+        }
+
+        function flushPendingQueue(done) {
+          if (state.isSyncing) {
+            if (done) done();
+            return;
+          }
+          if (!IS_LIVE_GAS || !isAppOnline()) {
             updateConnectionStatus();
             if (done) done();
             return;
           }
 
-          state.isSyncing = true;
-          var item = queue[0];
-          $('modeSubtitle').textContent = 'Syncing pending changes (' + queue.length + ')...';
-
-          google.script.run
-            .withSuccessHandler(function (res) {
-              RKSalesDB.removePendingSync(item.id).then(function () {
-                var remaining = loadPendingQueue();
-                remaining.shift();
-                savePendingQueue(remaining);
-
-                if (res && res.dashboard) applyDashboardPayload(res.dashboard);
-                state.isSyncing = false;
-
-                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                  navigator.serviceWorker.controller.postMessage({
-                    type: 'SYNC_PROGRESS',
-                    remaining: queue.length - 1
-                  });
-                }
-                flushPendingQueue(done);
-              }).catch(function () {
-                state.isSyncing = false;
-                flushPendingQueue(done);
-              });
-            })
-            .withFailureHandler(function (err) {
+          RKSalesDB.getPendingSync().then(function (queue) {
+            if (!queue || !queue.length) {
               state.isSyncing = false;
               updateConnectionStatus();
-              showToast('Pending sync paused: ' + (err.message || err), true);
               if (done) done();
-            })
-            .saveEntry(item.payload);
-        }).catch(function () {
-          state.isSyncing = false;
-          if (done) done();
-        });
-      }
-
-      function applyDashboardPayload(data) {
-        if (!data) return;
-        if (Array.isArray(data.salesPersons) && data.salesPersons.length) {
-          state.salesPersons = data.salesPersons;
-          populateLoginUserSelect();
-          populateSalesPersonOptions();
-          updateSalesPersonFieldForRole();
-        }
-        if (Array.isArray(data.regions) && data.regions.length) {
-          state.regions = data.regions;
-          populateRegionPills();
-        }
-
-        var incomingEntries = (Array.isArray(data.allEntries) ? data.allEntries : []).map(function (entry) {
-          return normalizeEntry(entry);
-        });
-
-        // Merge incoming entries with existing state.allEntries to preserve other FYs & offline entries
-        var map = {};
-        state.allEntries.forEach(function (e) {
-          var k = e.responseId || ('sr_' + e.srNo);
-          map[k] = e;
-        });
-        incomingEntries.forEach(function (e) {
-          var k = e.responseId || ('sr_' + e.srNo);
-          map[k] = e;
-        });
-        var merged = Object.keys(map).map(function (k) { return map[k]; });
-        merged.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
-
-        state.allEntries = merged;
-        state.last10 = (Array.isArray(data.last10) && data.last10.length)
-          ? data.last10.map(function (e) { return normalizeEntry(e); })
-          : state.allEntries.slice(0, 10);
-
-        savePreviewStorage();
-        RKSalesDB.saveEntries(state.allEntries);
-
-        if (data.sheetUrl) {
-          state.sheetUrl = data.sheetUrl;
-          $('openSheetLink').href = data.sheetUrl;
-        }
-        $('recentCountBadge').textContent = state.allEntries.length + ' total';
-        populatePartyDatalist();
-        populateDashFYOptions();
-        if (state.activeTab === 'recent') renderRecentList();
-        if (state.activeTab === 'dashboard') renderDashboard();
-        maybeOpenInitialEdit();
-      }
-
-      function maybeOpenInitialEdit() {
-        if (!INITIAL_EDIT_ID || initialEditOpened || !state.currentUser) return;
-        var found = state.allEntries.find(function (x) { return String(x.responseId) === String(INITIAL_EDIT_ID); });
-        if (found) {
-          initialEditOpened = true;
-          loadEntryForEdit(found);
-        }
-      }
-
-      function syncData(showFeedback, specificOptions) {
-        var options = specificOptions || { fy: state.dashFY || getCurrentFY(), all: false };
-        if (IS_LIVE_GAS && isAppOnline()) {
-          $('modeSubtitle').textContent = 'Syncing with Google Sheets...';
-          google.script.run
-            .withSuccessHandler(function (data) {
-              if (options.all) {
-                state.loadedFys['ALL'] = true;
-              } else if (options.fy) {
-                state.loadedFys[options.fy] = true;
-              }
-              applyDashboardPayload(data);
-              flushPendingQueue(function () {
-                updateConnectionStatus();
-                if (showFeedback) showToast('Synced with Google Sheets & pending changes');
-              });
-            })
-            .withFailureHandler(function (err) {
-              updateConnectionStatus();
-              showToast('Sync failed: ' + (err.message || err), true);
-            })
-            .getDashboardData(options);
-        } else {
-          if (!state.forceOffline) {
-            $('previewBanner').classList.remove('hidden');
-            $('modeSubtitle').textContent = 'Interactive Preview Mode (Multi-Year)';
-          } else {
-            $('modeSubtitle').textContent = 'Manual Offline Mode • Local Storage';
-          }
-          var local = loadPreviewStorage();
-          local.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
-          applyDashboardPayload({
-            salesPersons: state.salesPersons,
-            allEntries: local,
-            last10: local.slice(0, 10)
-          });
-          RKSalesDB.getAllEntries().then(function (idbEntries) {
-            if (idbEntries && idbEntries.length > 0 && idbEntries.length !== state.allEntries.length) {
-              applyDashboardPayload({
-                salesPersons: state.salesPersons,
-                allEntries: idbEntries,
-                last10: idbEntries.slice(0, 10)
-              });
-            }
-            updateConnectionStatus();
-          }).catch(function () {
-            updateConnectionStatus();
-          });
-          if (showFeedback) {
-            showToast(state.forceOffline ? 'Manual offline mode active' : (navigator.onLine === false ? 'Offline mode: local data ready' : 'Local state refreshed'));
-          }
-        }
-      }
-
-      function handleSubmit(e) {
-        e.preventDefault();
-        if (!state.currentUser) {
-          showLoginModal();
-          showToast('Please sign in to submit entries.', true);
-          return;
-        }
-
-        var regionVal = state.selectedRegion === '__OTHER__' ? $('regionOther').value.trim() : state.selectedRegion;
-        var termsVal = state.selectedTerms === '__OTHER__' ? $('termsOther').value.trim() : state.selectedTerms;
-        var mo = $('month').value;
-        var yr = $('year').value;
-        var monthYear = mo + '-' + yr;
-
-        // Sales Person determination: Admin can pick anyone; regular rep is locked to own code
-        var salesPersonVal = (state.currentUser.role === 'ADMIN')
-          ? $('salesPerson').value.trim()
-          : state.currentUser.code;
-
-        if (!mo || !yr || !salesPersonVal || !$('partyName').value.trim() || !regionVal ||
-          !$('poNo').value.trim() || !$('poDate').value || !$('productKeyword').value ||
-          $('poValue').value === '' || $('productValue').value === '' || !state.selectedCommType || !state.selectedWB) {
-          showToast('Please fill all required (*) fields.', true);
-          return;
-        }
-
-        var payload = {
-          authCode: state.currentUser.code,
-          authPin: state.currentUser.pin,
-          responseId: $('responseId').value.trim(),
-          month: mo,
-          year: yr,
-          monthYear: monthYear,
-          salesPerson: salesPersonVal,
-          partyName: $('partyName').value.trim(),
-          revisit: $('revisitCheckbox').checked,
-          region: regionVal,
-          poNo: $('poNo').value.trim(),
-          poDate: $('poDate').value,
-          piNo: $('piNo').value.trim(),
-          piDate: $('piDate').value,
-          invoiceNo: $('invoiceNo').value.trim(),
-          invoiceDate: $('invoiceDate').value,
-          productKeyword: $('productKeyword').value,
-          productName: $('productName').value.trim(),
-          poValue: toNum($('poValue').value),
-          productValue: toNum($('productValue').value),
-          freightCharges: toNum($('freightCharges').value),
-          commissionType: state.selectedCommType,
-          commissionPct: state.selectedCommType === 'F' ? 0 : getEffectiveCommPct(),
-          commissionFixed: state.selectedCommType === 'P' ? 0 : toNum($('commissionFixed').value),
-          paymentTerms: termsVal,
-          paymentStatus: state.selectedStatus,
-          wbBilling: state.selectedWB,
-          remark: $('remark').value.trim(),
-          accountsRemark: $('accountsRemark').value.trim()
-        };
-
-        var btn = $('submitBtn');
-        btn.disabled = true;
-        btn.classList.add('opacity-70');
-        $('submitBtnText').textContent = payload.responseId ? 'Updating...' : 'Saving...';
-
-        if (IS_LIVE_GAS && isAppOnline()) {
-          google.script.run
-            .withSuccessHandler(function (res) {
-              btn.disabled = false;
-              btn.classList.remove('opacity-70');
-              applyDashboardPayload(res.dashboard);
-              resetForm(true);
-              showToast((res.isEdit ? 'Updated' : 'Saved') + ' Entry #' + res.srNo + ' (' + payload.salesPerson + ') → ' + res.monthYear + ' tab.');
-            })
-            .withFailureHandler(function (err) {
-              btn.disabled = false;
-              btn.classList.remove('opacity-70');
-              $('submitBtnText').textContent = payload.responseId ? 'Update Entry' : 'Save Sales Entry';
-              showToast('Error: ' + (err.message || err), true);
-            })
-            .saveEntry(payload);
-        } else {
-          // Preview / Offline Mode local save
-          var pv = payload.productValue;
-          var fr = payload.freightCharges;
-          var gst = Math.round((pv + fr) * 0.18 * 100) / 100;
-          var totalVal = Math.round((pv + fr + gst) * 100) / 100;
-          var commVal = Math.round(pv * (payload.commissionPct / 100) * 100) / 100;
-          var totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
-
-          var idx = payload.responseId
-            ? state.allEntries.findIndex(function (x) { return x.responseId === payload.responseId; })
-            : -1;
-          var maxSr = state.allEntries.reduce(function (m, x) { return Math.max(m, x.srNo || 0); }, 0);
-          var srNo = idx >= 0 ? state.allEntries[idx].srNo : (maxSr + 1);
-          var respId = idx >= 0 ? state.allEntries[idx].responseId : ('RK-' + Date.now());
-
-          var rec = normalizeEntry(Object.assign({}, payload, {
-            srNo: srNo,
-            responseId: respId,
-            revisit: payload.revisit,
-            gstValue: gst,
-            totalValue: totalVal,
-            commissionValuePct: commVal,
-            totalCommission: totalComm,
-            timestamp: new Date().toLocaleString('en-IN')
-          }));
-
-          if (idx >= 0) state.allEntries[idx] = rec;
-          else state.allEntries.unshift(rec);
-
-          state.allEntries.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
-          savePreviewStorage();
-          RKSalesDB.saveEntries(state.allEntries);
-          if (IS_LIVE_GAS || state.forceOffline) {
-            enqueuePendingPayload(payload);
-          }
-          applyDashboardPayload({
-            salesPersons: state.salesPersons,
-            allEntries: state.allEntries,
-            last10: state.allEntries.slice(0, 10)
-          });
-
-          btn.disabled = false;
-          btn.classList.remove('opacity-70');
-          resetForm(true);
-          showToast((idx >= 0 ? 'Updated' : 'Saved') + ' Entry #' + srNo + ' (' + rec.salesPerson + ') → ' + rec.monthYear + ' tab.');
-        }
-      }
-
-      // ---------- RENDER LAST 10 TRANSACTIONS ----------
-      function renderRecentList() {
-        var q = ($('recentSearch').value || '').toLowerCase().trim();
-        var isAdm = (state.currentUser && state.currentUser.role === 'ADMIN');
-        var myCode = (state.currentUser ? state.currentUser.code.toUpperCase() : '');
-
-        var list = state.last10.filter(function (item) {
-          if (!q) return true;
-          var hay = [item.srNo, item.monthYear, item.salesPerson, item.partyName, item.region, item.poNo, item.productKeyword, item.productName, item.revisit ? 'revisit' : ''].join(' ').toLowerCase();
-          return hay.indexOf(q) !== -1;
-        });
-
-        var container = $('recentList');
-        if (!list.length) {
-          container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">No transactions yet. Submit an entry on the New Entry tab to see it here.</div>';
-          return;
-        }
-
-        container.innerHTML = list.map(function (item) {
-          var isRcd = item.paymentStatus === 'RCD';
-          var badgeCls = isRcd ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700';
-          var badgeTxt = isRcd ? 'RCD' : 'Pending';
-
-          var canEdit = isAdm || (item.salesPerson && item.salesPerson.toUpperCase() === myCode);
-          var editBtnHtml = canEdit
-            ? '<button type="button" data-edit-id="' + escapeHtml(item.responseId) + '" class="shrink-0 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 active:scale-95 transition">Edit</button>'
-            : '<span class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium border border-slate-200" title="Only Admin or assigned rep can edit">Locked</span>';
-
-          var cardBorder = item.revisit ? 'border-amber-400 bg-amber-50/40' : 'border-slate-200 bg-white';
-          var srTag = item.revisit
-            ? '<span class="px-1.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[11px] flex items-center gap-1 shadow-sm">⚠️ #' + item.srNo + ' Revisit</span>'
-            : '<span class="text-xs font-bold text-blue-800">#' + item.srNo + '</span>';
-
-          return (
-            '<div class="rounded-2xl shadow-sm border ' + cardBorder + ' p-3.5 space-y-2">' +
-            '<div class="flex items-start justify-between gap-2">' +
-            '<div>' +
-            '<div class="flex items-center gap-1.5 flex-wrap">' +
-            srTag +
-            '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-700">' + escapeHtml(item.monthYear || item.month) + '</span>' +
-            '<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] font-bold text-indigo-700">' + escapeHtml(item.salesPerson) + '</span>' +
-            '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + badgeCls + '">' + badgeTxt + '</span>' +
-            '</div>' +
-            '<div class="text-sm font-bold text-slate-900 mt-1">' + escapeHtml(item.partyName) + '</div>' +
-            '<div class="text-xs text-slate-500">' + escapeHtml(item.region) + ' • PO: ' + escapeHtml(item.poNo) + ' • ' + escapeHtml(item.productKeyword) + (item.productName ? ' (' + escapeHtml(item.productName) + ')' : '') + '</div>' +
-            '</div>' +
-            editBtnHtml +
-            '</div>' +
-            '<div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">' +
-            '<div><span class="text-slate-500">Total:</span> <span class="font-bold text-slate-900">' + fmtINR(item.totalValue) + '</span></div>' +
-            '<div><span class="text-slate-500">Comm:</span> <span class="font-bold text-sky-700">' + fmtINR(item.totalCommission) + '</span></div>' +
-            '</div>' +
-            '</div>'
-          );
-        }).join('');
-      }
-
-      $('recentList').addEventListener('click', function (e) {
-        var btn = e.target.closest('button[data-edit-id]');
-        if (!btn) return;
-        var id = btn.getAttribute('data-edit-id');
-        var found = state.allEntries.find(function (x) { return String(x.responseId) === String(id); });
-        if (found) loadEntryForEdit(found);
-      });
-
-      // ---------- RENDER MULTI-YEAR MONTHLY DASHBOARD ----------
-      function buildDashMonthPills() {
-        var opts = ['ALL'].concat(FY_MONTHS);
-        $('dashMonthPills').innerHTML = opts.map(function (mo) {
-          var act = state.dashMonth === mo ? 'active' : '';
-          return '<button type="button" data-dash-mo="' + mo + '" class="pill-btn ' + act + ' shrink-0 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">' + mo + '</button>';
-        }).join('');
-      }
-
-      $('dashMonthPills').addEventListener('click', function (e) {
-        var btn = e.target.closest('button[data-dash-mo]');
-        if (!btn) return;
-        state.dashMonth = btn.getAttribute('data-dash-mo');
-        renderDashboard();
-      });
-
-      $('dashFySelect').addEventListener('change', function () {
-        state.dashFY = $('dashFySelect').value;
-        renderDashboard();
-        if (IS_LIVE_GAS && isAppOnline()) {
-          var targetFy = state.dashFY;
-          if (targetFy === 'ALL' && !state.loadedFys['ALL']) {
-            syncData(false, { all: true });
-          } else if (targetFy !== 'ALL' && !state.loadedFys[targetFy]) {
-            syncData(false, { fy: targetFy, all: false });
-          }
-        }
-      });
-
-      function entryMatchesFY(entry, fyStr) {
-        if (!fyStr || fyStr === 'ALL') return true;
-        var mo = getEntryMonth(entry);
-        var yr = getEntryYear(entry);
-        return getFYFromMonthYear(mo, yr) === fyStr;
-      }
-
-      function renderDashboard() {
-        buildDashMonthPills();
-
-        var fyLabel = state.dashFY === 'ALL' ? 'All Years' : state.dashFY;
-        var targetMo = normalizeMonthCode(state.dashMonth);
-
-        if (state.dashFY === 'ALL') {
-          $('dashActiveMonthLabel').textContent = targetMo === 'ALL' ? 'All Years & Months' : ('All ' + targetMo + ' across years');
-          $('dashTabsHint').textContent = 'All MMM-YYYY tabs combined';
-        } else {
-          var sy = fyStartYear(state.dashFY);
-          $('dashActiveMonthLabel').textContent = targetMo === 'ALL'
-            ? (state.dashFY + ' (All 12 Months)')
-            : getMonthYearForFY(state.dashFY, targetMo);
-          $('dashTabsHint').textContent = 'Tabs: APR-' + sy + ' to MAR-' + (sy + 1);
-        }
-
-        var fyFiltered = state.allEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
-        var filtered = targetMo === 'ALL'
-          ? fyFiltered
-          : fyFiltered.filter(function (x) { return getEntryMonth(x) === targetMo; });
-
-        var totalSales = 0, totalComm = 0, totalProduct = 0, totalPo = 0, totalGst = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0;
-        filtered.forEach(function (x) {
-          totalPo += toNum(x.poValue);
-          totalProduct += toNum(x.productValue);
-          totalSales += toNum(x.totalValue);
-          totalComm += toNum(x.totalCommission);
-          totalGst += toNum(x.gstValue);
-          if (x.paymentStatus === 'RCD') {
-            collectedAmt += toNum(x.totalValue);
-          } else {
-            pendingAmt += toNum(x.totalValue);
-            pendingCnt += 1;
-          }
-        });
-
-        if ($('kpiPoVal')) $('kpiPoVal').textContent = fmtINRCompact(totalPo);
-        if ($('kpiSalesVal')) $('kpiSalesVal').textContent = fmtINRCompact(totalProduct);
-        if ($('kpiEntries')) $('kpiEntries').textContent = filtered.length + (filtered.length === 1 ? ' entry' : ' entries');
-        if ($('kpiComm')) $('kpiComm').textContent = fmtINRCompact(totalComm);
-        if ($('kpiProductVal')) $('kpiProductVal').textContent = 'Sales Value: ' + fmtINRCompact(totalProduct);
-        if ($('kpiSales')) $('kpiSales').textContent = fmtINRCompact(totalSales);
-        if ($('kpiCommPct')) $('kpiCommPct').textContent = fmtINRCompact(filtered.reduce(function (sum, x) {
-          return sum + toNum(x.commissionValuePct);
-        }, 0));
-        if ($('kpiPendingAmt')) $('kpiPendingAmt').textContent = fmtINRCompact(pendingAmt);
-        if ($('kpiPendingCnt')) $('kpiPendingCnt').textContent = pendingCnt + ' pending ' + (pendingCnt === 1 ? 'order' : 'orders');
-        if ($('kpiCollectedAmt')) $('kpiCollectedAmt').textContent = fmtINRCompact(collectedAmt);
-        if ($('kpiGstAmt')) $('kpiGstAmt').textContent = 'GST: ' + fmtINRCompact(totalGst);
-
-        // Dynamic Sales Person Table
-        var repMap = {};
-        var repList = [];
-        state.salesPersons.forEach(function (sp) {
-          if (sp.active !== false || filtered.some(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); })) {
-            repMap[sp.code] = sp;
-            repList.push(sp);
-          }
-        });
-        filtered.forEach(function (x) {
-          var repCode = String(x.salesPerson || '').trim();
-          if (repCode && !repMap[repCode]) {
-            var extra = { code: repCode, name: repCode, active: false };
-            repMap[repCode] = extra;
-            repList.push(extra);
-          }
-        });
-
-        var tbody = $('salesPersonTable');
-        tbody.innerHTML = repList.map(function (sp) {
-          var rows = filtered.filter(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); });
-          var sVal = rows.reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
-          var cVal = rows.reduce(function (a, b) { return a + toNum(b.totalCommission); }, 0);
-          var pVal = rows.filter(function (x) { return x.paymentStatus !== 'RCD'; }).reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
-          var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
-          var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
-          return (
-            '<tr>' +
-            '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
-            '<td class="py-2 px-2 text-right font-medium text-slate-700">' + rows.length + '</td>' +
-            '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
-            '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
-            '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
-            '</tr>'
-          );
-        }).join('');
-
-        // Monthly Sales Chart
-        $('chartTitle').textContent = fyLabel + ' Monthly Sales (Total Value ₹)';
-        var chartLabels = FY_MONTHS.map(function (mo) {
-          if (state.dashFY === 'ALL') return mo;
-          var my = getMonthYearForFY(state.dashFY, mo);
-          return mo + '-' + my.slice(-2);
-        });
-        var monthlyTotals = FY_MONTHS.map(function (mo) {
-          return fyFiltered
-            .filter(function (x) { return getEntryMonth(x) === mo; })
-            .reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
-        });
-        var barColors = FY_MONTHS.map(function (mo) {
-          return (targetMo === mo) ? '#059669' : '#1e3a8a';
-        });
-
-        var ctx = $('monthlyChart').getContext('2d');
-        if (state.chartInstance) {
-          state.chartInstance.data.labels = chartLabels;
-          state.chartInstance.data.datasets[0].data = monthlyTotals;
-          state.chartInstance.data.datasets[0].backgroundColor = barColors;
-          state.chartInstance.update();
-        } else if (typeof Chart !== 'undefined') {
-          state.chartInstance = new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: chartLabels,
-              datasets: [{
-                label: 'Total Value (₹)',
-                data: monthlyTotals,
-                backgroundColor: barColors,
-                borderRadius: 6
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              onClick: function (evt, elements) {
-                if (elements && elements.length > 0) {
-                  var idx = elements[0].index;
-                  if (idx >= 0 && idx < FY_MONTHS.length) {
-                    state.dashMonth = FY_MONTHS[idx];
-                    renderDashboard();
-                  }
-                }
-              },
-              plugins: {
-                legend: { display: false },
-                tooltip: {
-                  callbacks: {
-                    label: function (c) { return fmtINR(c.parsed.y); }
-                  }
-                }
-              },
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  ticks: {
-                    callback: function (v) { return '₹' + Number(v).toLocaleString('en-IN'); },
-                    font: { size: 10 }
-                  }
-                },
-                x: {
-                  grid: { display: false },
-                  ticks: { font: { size: 10 } }
-                }
-              }
-            }
-          });
-        }
-      }
-
-      // ---------- CHANGE PIN CONTROLLER ----------
-      function openChangePinDialog() {
-        if (!state.currentUser) return;
-        $('currentPinInput').value = '';
-        $('newPinInput').value = '';
-        $('confirmPinInput').value = '';
-        $('changePinError').classList.add('hidden');
-
-        var isAdm = (state.currentUser.role === 'ADMIN');
-        var adminGroup = $('changePinAdminUserGroup');
-        if (isAdm) {
-          adminGroup.classList.remove('hidden');
-          var targetSel = $('changePinTargetUser');
-          targetSel.innerHTML = state.salesPersons.map(function (sp) {
-            return '<option value="' + escapeHtml(sp.code) + '"' + (sp.code === state.currentUser.code ? ' selected' : '') + '>' +
-              escapeHtml(sp.code + ' — ' + sp.name + (sp.role === 'ADMIN' ? ' [Admin]' : '')) + '</option>';
-          }).join('');
-        } else {
-          adminGroup.classList.add('hidden');
-        }
-        $('changePinModal').classList.remove('hidden');
-      }
-
-      function handleSaveNewPin() {
-        if (!state.currentUser) return;
-        var curPin = $('currentPinInput').value.trim();
-        var newPin = $('newPinInput').value.trim();
-        var confPin = $('confirmPinInput').value.trim();
-        var errEl = $('changePinError');
-
-        var isAdm = (state.currentUser.role === 'ADMIN');
-        var targetCode = isAdm ? $('changePinTargetUser').value : state.currentUser.code;
-
-        if (!curPin) {
-          errEl.textContent = 'Please enter your current PIN.';
-          errEl.classList.remove('hidden');
-          return;
-        }
-        if (!newPin || newPin.length < 4 || newPin.length > 8) {
-          errEl.textContent = 'New PIN must be between 4 and 8 digits.';
-          errEl.classList.remove('hidden');
-          return;
-        }
-        if (newPin !== confPin) {
-          errEl.textContent = 'New PIN and Confirm PIN do not match.';
-          errEl.classList.remove('hidden');
-          return;
-        }
-
-        var saveBtn = $('saveNewPinBtn');
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Updating...';
-
-        if (IS_LIVE_GAS && isAppOnline()) {
-          google.script.run
-            .withSuccessHandler(function (res) {
-              saveBtn.disabled = false;
-              saveBtn.textContent = 'Update PIN';
-              if (res && res.ok) {
-                if (targetCode === state.currentUser.code) {
-                  state.currentUser.pin = newPin;
-                  saveSession(state.currentUser);
-                }
-                $('changePinModal').classList.add('hidden');
-                showToast(res.message || 'PIN updated successfully!');
-              } else {
-                errEl.textContent = (res && res.message) ? res.message : 'Failed to update PIN.';
-                errEl.classList.remove('hidden');
-              }
-            })
-            .withFailureHandler(function (err) {
-              saveBtn.disabled = false;
-              saveBtn.textContent = 'Update PIN';
-              errEl.textContent = 'Error: ' + (err.message || err);
-              errEl.classList.remove('hidden');
-            })
-            .updateUserPin(state.currentUser.code, curPin, targetCode, newPin);
-        } else {
-          // Preview Mode update
-          setTimeout(function () {
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Update PIN';
-            if (curPin !== state.currentUser.pin) {
-              errEl.textContent = 'Current PIN is incorrect.';
-              errEl.classList.remove('hidden');
               return;
             }
-            var target = state.salesPersons.find(function (u) { return u.code === targetCode; });
-            if (target) target.pin = newPin;
-            if (targetCode === state.currentUser.code) {
-              state.currentUser.pin = newPin;
-              saveSession(state.currentUser);
+
+            state.isSyncing = true;
+            var item = queue[0];
+            $('modeSubtitle').textContent = 'Syncing pending changes (' + queue.length + ')...';
+
+            google.script.run
+              .withSuccessHandler(function (res) {
+                RKSalesDB.removePendingSync(item.id).then(function () {
+                  var remaining = loadPendingQueue();
+                  remaining.shift();
+                  savePendingQueue(remaining);
+
+                  if (res && res.dashboard) applyDashboardPayload(res.dashboard);
+                  state.isSyncing = false;
+
+                  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({
+                      type: 'SYNC_PROGRESS',
+                      remaining: queue.length - 1
+                    });
+                  }
+                  flushPendingQueue(done);
+                }).catch(function () {
+                  state.isSyncing = false;
+                  flushPendingQueue(done);
+                });
+              })
+              .withFailureHandler(function (err) {
+                state.isSyncing = false;
+                updateConnectionStatus();
+                showToast('Pending sync paused: ' + (err.message || err), true);
+                if (done) done();
+              })
+              .saveEntry(item.payload);
+          }).catch(function () {
+            state.isSyncing = false;
+            if (done) done();
+          });
+        }
+
+        function applyDashboardPayload(data) {
+          if (!data) return;
+          if (Array.isArray(data.salesPersons) && data.salesPersons.length) {
+            state.salesPersons = data.salesPersons;
+            populateLoginUserSelect();
+            populateSalesPersonOptions();
+            updateSalesPersonFieldForRole();
+          }
+          if (Array.isArray(data.regions) && data.regions.length) {
+            state.regions = data.regions;
+            populateRegionPills();
+          }
+
+          var incomingEntries = (Array.isArray(data.allEntries) ? data.allEntries : []).map(function (entry) {
+            return normalizeEntry(entry);
+          });
+
+          // Merge incoming entries with existing state.allEntries to preserve other FYs & offline entries
+          var map = {};
+          state.allEntries.forEach(function (e) {
+            var k = e.responseId || ('sr_' + e.srNo);
+            map[k] = e;
+          });
+          incomingEntries.forEach(function (e) {
+            var k = e.responseId || ('sr_' + e.srNo);
+            map[k] = e;
+          });
+          var merged = Object.keys(map).map(function (k) { return map[k]; });
+          merged.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
+
+          state.allEntries = merged;
+          state.last10 = (Array.isArray(data.last10) && data.last10.length)
+            ? data.last10.map(function (e) { return normalizeEntry(e); })
+            : state.allEntries.slice(0, 10);
+
+          savePreviewStorage();
+          RKSalesDB.saveEntries(state.allEntries);
+
+          if (data.sheetUrl) {
+            state.sheetUrl = data.sheetUrl;
+            $('openSheetLink').href = data.sheetUrl;
+          }
+          $('recentCountBadge').textContent = state.allEntries.length + ' total';
+          populatePartyDatalist();
+          populateDashFYOptions();
+          if (state.activeTab === 'recent') renderRecentList();
+          if (state.activeTab === 'dashboard') renderDashboard();
+          maybeOpenInitialEdit();
+        }
+
+        function maybeOpenInitialEdit() {
+          if (!INITIAL_EDIT_ID || initialEditOpened || !state.currentUser) return;
+          var found = state.allEntries.find(function (x) { return String(x.responseId) === String(INITIAL_EDIT_ID); });
+          if (found) {
+            initialEditOpened = true;
+            loadEntryForEdit(found);
+          }
+        }
+
+        function syncData(showFeedback, specificOptions) {
+          var options = specificOptions || { fy: state.dashFY || getCurrentFY(), all: false };
+          if (IS_LIVE_GAS && isAppOnline()) {
+            $('modeSubtitle').textContent = 'Syncing with Google Sheets...';
+            google.script.run
+              .withSuccessHandler(function (data) {
+                if (options.all) {
+                  state.loadedFys['ALL'] = true;
+                } else if (options.fy) {
+                  state.loadedFys[options.fy] = true;
+                }
+                applyDashboardPayload(data);
+                flushPendingQueue(function () {
+                  updateConnectionStatus();
+                  if (showFeedback) showToast('Synced with Google Sheets & pending changes');
+                });
+              })
+              .withFailureHandler(function (err) {
+                updateConnectionStatus();
+                showToast('Sync failed: ' + (err.message || err), true);
+              })
+              .getDashboardData(options);
+          } else {
+            if (!state.forceOffline) {
+              $('previewBanner').classList.remove('hidden');
+              $('modeSubtitle').textContent = 'Interactive Preview Mode (Multi-Year)';
+            } else {
+              $('modeSubtitle').textContent = 'Manual Offline Mode • Local Storage';
             }
-            $('changePinModal').classList.add('hidden');
-            showToast('PIN updated successfully for ' + targetCode + ' (Preview Mode)!');
-          }, 200);
-        }
-      }
-
-      // ---------- EMAIL REPORT CONTROLLER ----------
-      function getQuarterFromMonth(mo) {
-        var m = String(mo || '').toUpperCase().trim();
-        if (['APR', 'MAY', 'JUN'].indexOf(m) !== -1) return 'Q1';
-        if (['JUL', 'AUG', 'SEP'].indexOf(m) !== -1) return 'Q2';
-        if (['OCT', 'NOV', 'DEC'].indexOf(m) !== -1) return 'Q3';
-        if (['JAN', 'FEB', 'MAR'].indexOf(m) !== -1) return 'Q4';
-        return 'Q1';
-      }
-
-      function populateEmailReportOptions() {
-        var mSel = $('emailMonthSelect');
-        mSel.innerHTML = CAL_MONTHS.map(function (mo) {
-          return '<option value="' + mo + '">' + mo + '</option>';
-        }).join('');
-        mSel.value = currentCalMonth();
-
-        var ySel = $('emailYearSelect');
-        var curY = new Date().getFullYear();
-        var yOpts = [];
-        for (var y = curY - 2; y <= curY + 5; y++) {
-          yOpts.push('<option value="' + y + '">' + y + '</option>');
-        }
-        ySel.innerHTML = yOpts.join('');
-        ySel.value = String(curY);
-
-        var curStart = fyStartYear(getCurrentFY());
-        var fySet = {};
-        for (var f = curStart - 1; f <= curStart + 5; f++) {
-          fySet['FY ' + String(f).slice(-2) + '-' + String(f + 1).slice(-2)] = true;
-        }
-        state.allEntries.forEach(function (e) {
-          var mo = getEntryMonth(e);
-          var yr = getEntryYear(e);
-          if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
-        });
-        var fys = Object.keys(fySet).sort();
-        var fyHtml = fys.map(function (fy) {
-          return '<option value="' + fy + '">' + fy + '</option>';
-        }).join('');
-
-        $('emailQuarterFySelect').innerHTML = fyHtml;
-        $('emailQuarterFySelect').value = getCurrentFY();
-        $('emailFySelect').innerHTML = fyHtml;
-        $('emailFySelect').value = getCurrentFY();
-        $('emailQuarterSelect').value = getQuarterFromMonth(currentCalMonth());
-
-        var partySet = {};
-        state.allEntries.forEach(function (e) {
-          if (e.partyName && e.partyName.trim()) partySet[e.partyName.trim()] = true;
-        });
-        var parties = Object.keys(partySet).sort();
-        $('emailPartySelect').innerHTML = '<option value="">All Parties</option>' + parties.map(function (p) {
-          return '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>';
-        }).join('');
-
-        $('emailRepSelect').innerHTML = '<option value="">All Reps</option>' + state.salesPersons.map(function (sp) {
-          return '<option value="' + escapeHtml(sp.code) + '">' + escapeHtml(sp.code + (sp.name && sp.name !== sp.code ? ' — ' + sp.name : '')) + '</option>';
-        }).join('');
-
-        if (state.currentUser && state.currentUser.email) {
-          $('emailToInput').value = state.currentUser.email;
-        } else {
-          $('emailToInput').value = '';
-        }
-      }
-
-      function openEmailReportModal() {
-        if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
-          showToast('Only Admin can dispatch email reports.', true);
-          return;
-        }
-        populateEmailReportOptions();
-        setPillValue('emailPeriodPills', 'emailReportPeriodType', 'MONTH');
-        $('emailMonthGroup').classList.remove('hidden');
-        $('emailQuarterGroup').classList.add('hidden');
-        $('emailFyGroup').classList.add('hidden');
-        $('emailReportMsg').classList.add('hidden');
-        updateEmailReportPreview();
-        $('emailReportModal').classList.remove('hidden');
-      }
-
-      function updateEmailReportPreview() {
-        var pt = state.emailReportPeriodType || 'MONTH';
-        var mo = $('emailMonthSelect').value;
-        var yr = $('emailYearSelect').value;
-        var targetMY = mo + '-' + yr;
-        var qtr = $('emailQuarterSelect').value;
-        var qtrFY = $('emailQuarterFySelect').value;
-        var fy = $('emailFySelect').value;
-
-        var targetParty = ($('emailPartySelect').value || '').toLowerCase().trim();
-        var targetProd = ($('emailProductSelect').value || '').toUpperCase().trim();
-        var targetRep = ($('emailRepSelect').value || '').toUpperCase().trim();
-
-        var filtered = state.allEntries.filter(function (x) {
-          if (targetParty && (x.partyName || '').toLowerCase().trim() !== targetParty) return false;
-          if (targetProd && (x.productKeyword || '').toUpperCase().trim() !== targetProd) return false;
-          if (targetRep && (x.salesPerson || '').toUpperCase().trim() !== targetRep) return false;
-
-          var entryMo = getEntryMonth(x);
-          var entryYr = getEntryYear(x);
-          var entryMY = (entryMo && entryYr) ? (entryMo + '-' + entryYr) : (x.monthYear || '').toUpperCase().trim();
-          var entryFY = getFYFromMonthYear(entryMo, entryYr);
-          var entryQtr = getQuarterFromMonth(entryMo);
-
-          if (pt === 'MONTH') {
-            return entryMY === targetMY;
-          } else if (pt === 'QUARTER') {
-            return entryFY === qtrFY && entryQtr === qtr;
-          } else if (pt === 'FY') {
-            return entryFY === fy;
-          }
-          return true;
-        });
-
-        var totalOrders = filtered.length;
-        var totalSales = 0;
-        var totalComm = 0;
-        var pendingAmt = 0;
-
-        filtered.forEach(function (x) {
-          totalSales += toNum(x.totalValue);
-          totalComm += toNum(x.totalCommission);
-          if (x.paymentStatus !== 'RCD') {
-            pendingAmt += toNum(x.totalValue);
-          }
-        });
-
-        $('emailPreviewOrders').textContent = totalOrders;
-        $('emailPreviewSales').textContent = fmtINRCompact(totalSales);
-        $('emailPreviewComm').textContent = fmtINRCompact(totalComm);
-        $('emailPreviewPending').textContent = fmtINRCompact(pendingAmt);
-      }
-
-      function handleSendEmailReport() {
-        if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
-          showToast('Only Admin can dispatch email reports.', true);
-          return;
-        }
-
-        var pt = state.emailReportPeriodType || 'MONTH';
-        var mo = $('emailMonthSelect').value;
-        var yr = $('emailYearSelect').value;
-        var targetMY = mo + '-' + yr;
-        var qtr = $('emailQuarterSelect').value;
-        var qtrFY = $('emailQuarterFySelect').value;
-        var fy = $('emailFySelect').value;
-
-        var toEmails = $('emailToInput').value.trim();
-
-        var filters = {
-          periodType: pt,
-          monthYear: targetMY,
-          quarter: qtr,
-          fy: (pt === 'QUARTER' ? qtrFY : (pt === 'FY' ? fy : getFYFromMonthYear(mo, yr))),
-          partyName: $('emailPartySelect').value.trim(),
-          productKeyword: $('emailProductSelect').value.trim(),
-          salesPerson: $('emailRepSelect').value.trim()
-        };
-
-        var payload = {
-          authCode: state.currentUser.code,
-          authPin: state.currentUser.pin,
-          toEmails: toEmails,
-          filters: filters
-        };
-
-        var btn = $('sendEmailReportBtn');
-        var btnText = $('sendEmailReportBtnText');
-        var msgEl = $('emailReportMsg');
-
-        btn.disabled = true;
-        btnText.textContent = 'Sending...';
-        msgEl.classList.add('hidden');
-
-        if (IS_LIVE_GAS && isAppOnline()) {
-          google.script.run
-            .withSuccessHandler(function (res) {
-              btn.disabled = false;
-              btnText.textContent = 'Send Email Report';
-              if (res && res.ok) {
-                $('emailReportModal').classList.add('hidden');
-                showToast(res.message || 'Email report sent successfully!');
-              } else {
-                msgEl.className = 'p-2.5 rounded-xl text-xs font-semibold text-center bg-rose-50 text-rose-700 border border-rose-200';
-                msgEl.textContent = (res && res.message) ? res.message : 'Failed to send report.';
-                msgEl.classList.remove('hidden');
-              }
-            })
-            .withFailureHandler(function (err) {
-              btn.disabled = false;
-              btnText.textContent = 'Send Email Report';
-              msgEl.className = 'p-2.5 rounded-xl text-xs font-semibold text-center bg-rose-50 text-rose-700 border border-rose-200';
-              msgEl.textContent = 'Error: ' + (err.message || err);
-              msgEl.classList.remove('hidden');
-            })
-            .sendEmailReport(payload);
-        } else {
-          // Preview Mode simulation
-          setTimeout(function () {
-            btn.disabled = false;
-            btnText.textContent = 'Send Email Report';
-            $('emailReportModal').classList.add('hidden');
-            var dest = toEmails || (state.currentUser.email || 'configured Admin email');
-            showToast('Email report preview dispatched (Preview Mode) to ' + dest + '!');
-          }, 400);
-        }
-      }
-
-      // ---------- BACKUP CONTROLLER ----------
-      function handleBackupClick() {
-        if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
-          showToast('Only Admin can trigger backups.', true);
-          return;
-        }
-        var btn = $('backupDataBtn');
-        var origHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.classList.add('opacity-70');
-        btn.textContent = 'Backing up...';
-
-        if (IS_LIVE_GAS && isAppOnline()) {
-          google.script.run
-            .withSuccessHandler(function (res) {
-              btn.disabled = false;
-              btn.classList.remove('opacity-70');
-              btn.innerHTML = origHtml;
-              if (res && res.ok) {
-                showToast('Backup created: ' + res.fileName + (res.deletedCount ? ' (' + res.deletedCount + ' old purged)' : ''));
-              } else {
-                showToast('Backup completed.', false);
-              }
-            })
-            .withFailureHandler(function (err) {
-              btn.disabled = false;
-              btn.classList.remove('opacity-70');
-              btn.innerHTML = origHtml;
-              showToast('Backup failed: ' + (err.message || err), true);
-            })
-            .triggerManualBackup({
-              authCode: state.currentUser.code,
-              authPin: state.currentUser.pin
+            var local = loadPreviewStorage();
+            local.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
+            applyDashboardPayload({
+              salesPersons: state.salesPersons,
+              allEntries: local,
+              last10: local.slice(0, 10)
             });
-        } else {
-          setTimeout(function () {
+            RKSalesDB.getAllEntries().then(function (idbEntries) {
+              if (idbEntries && idbEntries.length > 0 && idbEntries.length !== state.allEntries.length) {
+                applyDashboardPayload({
+                  salesPersons: state.salesPersons,
+                  allEntries: idbEntries,
+                  last10: idbEntries.slice(0, 10)
+                });
+              }
+              updateConnectionStatus();
+            }).catch(function () {
+              updateConnectionStatus();
+            });
+            if (showFeedback) {
+              showToast(state.forceOffline ? 'Manual offline mode active' : (navigator.onLine === false ? 'Offline mode: local data ready' : 'Local state refreshed'));
+            }
+          }
+        }
+
+        function handleSubmit(e) {
+          e.preventDefault();
+          if (!state.currentUser) {
+            showLoginModal();
+            showToast('Please sign in to submit entries.', true);
+            return;
+          }
+
+          var regionVal = state.selectedRegion === '__OTHER__' ? $('regionOther').value.trim() : state.selectedRegion;
+          var termsVal = state.selectedTerms === '__OTHER__' ? $('termsOther').value.trim() : state.selectedTerms;
+          var mo = $('month').value;
+          var yr = $('year').value;
+          var monthYear = mo + '-' + yr;
+
+          // Sales Person determination: Admin can pick anyone; regular rep is locked to own code
+          var salesPersonVal = (state.currentUser.role === 'ADMIN')
+            ? $('salesPerson').value.trim()
+            : state.currentUser.code;
+
+          if (!mo || !yr || !salesPersonVal || !$('partyName').value.trim() || !regionVal ||
+            !$('poNo').value.trim() || !$('poDate').value || !$('productKeyword').value ||
+            $('poValue').value === '' || $('productValue').value === '' || !state.selectedCommType || !state.selectedWB) {
+            showToast('Please fill all required (*) fields.', true);
+            return;
+          }
+
+          var payload = {
+            authCode: state.currentUser.code,
+            authPin: state.currentUser.pin,
+            responseId: $('responseId').value.trim(),
+            month: mo,
+            year: yr,
+            monthYear: monthYear,
+            salesPerson: salesPersonVal,
+            partyName: $('partyName').value.trim(),
+            revisit: $('revisitCheckbox').checked,
+            region: regionVal,
+            poNo: $('poNo').value.trim(),
+            poDate: $('poDate').value,
+            piNo: $('piNo').value.trim(),
+            piDate: $('piDate').value,
+            invoiceNo: $('invoiceNo').value.trim(),
+            invoiceDate: $('invoiceDate').value,
+            productKeyword: $('productKeyword').value,
+            productName: $('productName').value.trim(),
+            poValue: toNum($('poValue').value),
+            productValue: toNum($('productValue').value),
+            freightCharges: toNum($('freightCharges').value),
+            commissionType: state.selectedCommType,
+            commissionPct: state.selectedCommType === 'F' ? 0 : getEffectiveCommPct(),
+            commissionFixed: state.selectedCommType === 'P' ? 0 : toNum($('commissionFixed').value),
+            paymentTerms: termsVal,
+            paymentStatus: state.selectedStatus,
+            wbBilling: state.selectedWB,
+            remark: $('remark').value.trim(),
+            accountsRemark: $('accountsRemark').value.trim()
+          };
+
+          var btn = $('submitBtn');
+          btn.disabled = true;
+          btn.classList.add('opacity-70');
+          $('submitBtnText').textContent = payload.responseId ? 'Updating...' : 'Saving...';
+
+          if (IS_LIVE_GAS && isAppOnline()) {
+            google.script.run
+              .withSuccessHandler(function (res) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+                applyDashboardPayload(res.dashboard);
+                resetForm(true);
+                showToast((res.isEdit ? 'Updated' : 'Saved') + ' Entry #' + res.srNo + ' (' + payload.salesPerson + ') → ' + res.monthYear + ' tab.');
+              })
+              .withFailureHandler(function (err) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+                $('submitBtnText').textContent = payload.responseId ? 'Update Entry' : 'Save Sales Entry';
+                showToast('Error: ' + (err.message || err), true);
+              })
+              .saveEntry(payload);
+          } else {
+            // Preview / Offline Mode local save
+            var pv = payload.productValue;
+            var fr = payload.freightCharges;
+            var gst = Math.round((pv + fr) * 0.18 * 100) / 100;
+            var totalVal = Math.round((pv + fr + gst) * 100) / 100;
+            var commVal = Math.round(pv * (payload.commissionPct / 100) * 100) / 100;
+            var totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
+
+            var idx = payload.responseId
+              ? state.allEntries.findIndex(function (x) { return x.responseId === payload.responseId; })
+              : -1;
+            var maxSr = state.allEntries.reduce(function (m, x) { return Math.max(m, x.srNo || 0); }, 0);
+            var srNo = idx >= 0 ? state.allEntries[idx].srNo : (maxSr + 1);
+            var respId = idx >= 0 ? state.allEntries[idx].responseId : ('RK-' + Date.now());
+
+            var rec = normalizeEntry(Object.assign({}, payload, {
+              srNo: srNo,
+              responseId: respId,
+              revisit: payload.revisit,
+              gstValue: gst,
+              totalValue: totalVal,
+              commissionValuePct: commVal,
+              totalCommission: totalComm,
+              timestamp: new Date().toLocaleString('en-IN')
+            }));
+
+            if (idx >= 0) state.allEntries[idx] = rec;
+            else state.allEntries.unshift(rec);
+
+            state.allEntries.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
+            savePreviewStorage();
+            RKSalesDB.saveEntries(state.allEntries);
+            if (IS_LIVE_GAS || state.forceOffline) {
+              enqueuePendingPayload(payload);
+            }
+            applyDashboardPayload({
+              salesPersons: state.salesPersons,
+              allEntries: state.allEntries,
+              last10: state.allEntries.slice(0, 10)
+            });
+
             btn.disabled = false;
             btn.classList.remove('opacity-70');
-            btn.innerHTML = origHtml;
-            showToast('Manual backup simulated: spreadsheet copied to "RK Sales Backups" folder (Preview Mode).');
-          }, 400);
-        }
-      }
-
-      // ---------- WIRE UP EVENTS ----------
-      populateYearOptions();
-      populatePartyDatalist();
-      populateDashFYOptions();
-
-      setupPillGroup('regionPills', 'selectedRegion', 'regionOther');
-      populateRegionPills();
-      setupPillGroup('commTypePills', 'selectedCommType', null, updateCommTypeState);
-      setupPillGroup('commPctPills', 'selectedCommPct', 'commPctOther', updateLiveCalc);
-      setupPillGroup('termsPills', 'selectedTerms', 'termsOther');
-      setupPillGroup('statusPills', 'selectedStatus');
-      setupPillGroup('wbPills', 'selectedWB');
-      setupPillGroup('emailPeriodPills', 'emailReportPeriodType', null, function (pt) {
-        $('emailMonthGroup').classList.toggle('hidden', pt !== 'MONTH');
-        $('emailQuarterGroup').classList.toggle('hidden', pt !== 'QUARTER');
-        $('emailFyGroup').classList.toggle('hidden', pt !== 'FY');
-        updateEmailReportPreview();
-      });
-
-      $('month').addEventListener('change', updateTargetTabBadge);
-      $('year').addEventListener('change', updateTargetTabBadge);
-
-      $('poDate').addEventListener('change', function () {
-        if ($('responseId').value) return;
-        var v = $('poDate').value;
-        var p = v ? v.split('-') : [];
-        if (p.length === 3) {
-          var yr = p[0];
-          var mo = CAL_MONTHS[Number(p[1]) - 1];
-          if (mo) $('month').value = mo;
-          if (yr) {
-            if (!$('year').querySelector('option[value="' + yr + '"]')) {
-              var opt = document.createElement('option');
-              opt.value = yr;
-              opt.textContent = yr;
-              $('year').appendChild(opt);
-            }
-            $('year').value = yr;
+            resetForm(true);
+            showToast((idx >= 0 ? 'Updated' : 'Saved') + ' Entry #' + srNo + ' (' + rec.salesPerson + ') → ' + rec.monthYear + ' tab.');
           }
-          updateTargetTabBadge();
         }
-      });
 
-      $('poValue').addEventListener('input', function () {
-        var pvInput = $('productValue');
-        if (!pvInput.dataset.userEdited || pvInput.value === pvInput.dataset.lastPoVal || pvInput.value === '') {
-          pvInput.value = $('poValue').value;
-          pvInput.dataset.lastPoVal = $('poValue').value;
+        // ---------- RENDER LAST 10 TRANSACTIONS ----------
+        function renderRecentList() {
+          var q = ($('recentSearch').value || '').toLowerCase().trim();
+          var isAdm = (state.currentUser && state.currentUser.role === 'ADMIN');
+          var myCode = (state.currentUser ? state.currentUser.code.toUpperCase() : '');
+
+          var list = state.last10.filter(function (item) {
+            if (!q) return true;
+            var hay = [item.srNo, item.monthYear, item.salesPerson, item.partyName, item.region, item.poNo, item.productKeyword, item.productName, item.revisit ? 'revisit' : ''].join(' ').toLowerCase();
+            return hay.indexOf(q) !== -1;
+          });
+
+          var container = $('recentList');
+          if (!list.length) {
+            container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">No transactions yet. Submit an entry on the New Entry tab to see it here.</div>';
+            return;
+          }
+
+          container.innerHTML = list.map(function (item) {
+            var isRcd = item.paymentStatus === 'RCD';
+            var badgeCls = isRcd ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700';
+            var badgeTxt = isRcd ? 'RCD' : 'Pending';
+
+            var canEdit = isAdm || (item.salesPerson && item.salesPerson.toUpperCase() === myCode);
+            var editBtnHtml = canEdit
+              ? '<button type="button" data-edit-id="' + escapeHtml(item.responseId) + '" class="shrink-0 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 active:scale-95 transition">Edit</button>'
+              : '<span class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium border border-slate-200" title="Only Admin or assigned rep can edit">Locked</span>';
+
+            var cardBorder = item.revisit ? 'border-amber-400 bg-amber-50/40' : 'border-slate-200 bg-white';
+            var srTag = item.revisit
+              ? '<span class="px-1.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[11px] flex items-center gap-1 shadow-sm">⚠️ #' + item.srNo + ' Revisit</span>'
+              : '<span class="text-xs font-bold text-blue-800">#' + item.srNo + '</span>';
+
+            return (
+              '<div class="rounded-2xl shadow-sm border ' + cardBorder + ' p-3.5 space-y-2">' +
+              '<div class="flex items-start justify-between gap-2">' +
+              '<div>' +
+              '<div class="flex items-center gap-1.5 flex-wrap">' +
+              srTag +
+              '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-bold text-slate-700">' + escapeHtml(item.monthYear || item.month) + '</span>' +
+              '<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] font-bold text-indigo-700">' + escapeHtml(item.salesPerson) + '</span>' +
+              '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + badgeCls + '">' + badgeTxt + '</span>' +
+              '</div>' +
+              '<div class="text-sm font-bold text-slate-900 mt-1">' + escapeHtml(item.partyName) + '</div>' +
+              '<div class="text-xs text-slate-500">' + escapeHtml(item.region) + ' • PO: ' + escapeHtml(item.poNo) + ' • ' + escapeHtml(item.productKeyword) + (item.productName ? ' (' + escapeHtml(item.productName) + ')' : '') + '</div>' +
+              '</div>' +
+              editBtnHtml +
+              '</div>' +
+              '<div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">' +
+              '<div><span class="text-slate-500">Total:</span> <span class="font-bold text-slate-900">' + fmtINR(item.totalValue) + '</span></div>' +
+              '<div><span class="text-slate-500">Comm:</span> <span class="font-bold text-sky-700">' + fmtINR(item.totalCommission) + '</span></div>' +
+              '</div>' +
+              '</div>'
+            );
+          }).join('');
         }
-        updateLiveCalc();
-      });
 
-      $('productValue').addEventListener('input', function () {
-        $('productValue').dataset.userEdited = 'true';
-        updateLiveCalc();
-      });
-
-      $('prodKeywordPills').addEventListener('click', function (e) {
-        var btn = e.target.closest('button[data-val]');
-        if (!btn) return;
-        var val = btn.getAttribute('data-val');
-        var tokens = getKeywordTokens();
-
-        var upper = val.toUpperCase();
-        var idx = tokens.indexOf(upper);
-        if (idx !== -1) {
-          tokens.splice(idx, 1);
-        } else {
-          tokens.push(upper);
-        }
-        $('productKeyword').value = tokens.join(' + ');
-        updateProdKeywordPillStates();
-      });
-
-      $('productKeyword').addEventListener('input', updateProdKeywordPillStates);
-
-      ['freightCharges', 'commissionFixed', 'commPctOther'].forEach(function (id) {
-        $(id).addEventListener('input', updateLiveCalc);
-      });
-
-      document.querySelectorAll('.nav-btn').forEach(function (b) {
-        b.addEventListener('click', function () {
-          switchTab(b.getAttribute('data-tab'));
+        $('recentList').addEventListener('click', function (e) {
+          var btn = e.target.closest('button[data-edit-id]');
+          if (!btn) return;
+          var id = btn.getAttribute('data-edit-id');
+          var found = state.allEntries.find(function (x) { return String(x.responseId) === String(id); });
+          if (found) loadEntryForEdit(found);
         });
-      });
 
-      $('salesForm').addEventListener('submit', handleSubmit);
-      $('resetFormBtn').addEventListener('click', function () { resetForm(true); });
-      $('cancelEditBtn').addEventListener('click', function () { resetForm(true); });
-      $('refreshBtn').addEventListener('click', function () { syncData(true); });
-      window.addEventListener('online', function () {
-        updateConnectionStatus();
-        syncData(true);
-      });
-      window.addEventListener('offline', updateConnectionStatus);
-      $('recentSearch').addEventListener('input', renderRecentList);
-      $('logoutBtn').addEventListener('click', logoutUser);
-      $('backupDataBtn').addEventListener('click', handleBackupClick);
-      $('offlineModeToggle').addEventListener('click', function () { toggleOfflineMode(); });
-      $('disableForceOfflineBtn').addEventListener('click', function () { toggleOfflineMode(false); });
+        // ---------- RENDER MULTI-YEAR MONTHLY DASHBOARD ----------
+        function buildDashMonthPills() {
+          var opts = ['ALL'].concat(FY_MONTHS);
+          $('dashMonthPills').innerHTML = opts.map(function (mo) {
+            var act = state.dashMonth === mo ? 'active' : '';
+            return '<button type="button" data-dash-mo="' + mo + '" class="pill-btn ' + act + ' shrink-0 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">' + mo + '</button>';
+          }).join('');
+        }
 
-      // Change PIN handlers
-      $('openChangePinBtn').addEventListener('click', openChangePinDialog);
-      $('closeChangePinBtn').addEventListener('click', function () { $('changePinModal').classList.add('hidden'); });
-      $('cancelChangePinBtn').addEventListener('click', function () { $('changePinModal').classList.add('hidden'); });
-      $('saveNewPinBtn').addEventListener('click', handleSaveNewPin);
+        $('dashMonthPills').addEventListener('click', function (e) {
+          var btn = e.target.closest('button[data-dash-mo]');
+          if (!btn) return;
+          state.dashMonth = btn.getAttribute('data-dash-mo');
+          renderDashboard();
+        });
 
-      // Email Report handlers
-      $('openEmailReportBtn').addEventListener('click', openEmailReportModal);
-      $('closeEmailReportBtn').addEventListener('click', function () { $('emailReportModal').classList.add('hidden'); });
-      $('cancelEmailReportBtn').addEventListener('click', function () { $('emailReportModal').classList.add('hidden'); });
-      $('sendEmailReportBtn').addEventListener('click', handleSendEmailReport);
+        $('dashFySelect').addEventListener('change', function () {
+          state.dashFY = $('dashFySelect').value;
+          renderDashboard();
+          if (IS_LIVE_GAS && isAppOnline()) {
+            var targetFy = state.dashFY;
+            if (targetFy === 'ALL' && !state.loadedFys['ALL']) {
+              syncData(false, { all: true });
+            } else if (targetFy !== 'ALL' && !state.loadedFys[targetFy]) {
+              syncData(false, { fy: targetFy, all: false });
+            }
+          }
+        });
 
-      ['emailMonthSelect', 'emailYearSelect', 'emailQuarterSelect', 'emailQuarterFySelect', 'emailFySelect', 'emailPartySelect', 'emailProductSelect', 'emailRepSelect'].forEach(function (id) {
-        $(id).addEventListener('change', updateEmailReportPreview);
-      });
+        function entryMatchesFY(entry, fyStr) {
+          if (!fyStr || fyStr === 'ALL') return true;
+          var mo = getEntryMonth(entry);
+          var yr = getEntryYear(entry);
+          return getFYFromMonthYear(mo, yr) === fyStr;
+        }
 
-      // Keypad & PIN input handlers
-      document.querySelectorAll('.keypad-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          if (state.enteredPin.length < 8) {
-            state.enteredPin += btn.getAttribute('data-num');
+        function renderDashboard() {
+          buildDashMonthPills();
+
+          var fyLabel = state.dashFY === 'ALL' ? 'All Years' : state.dashFY;
+          var targetMo = normalizeMonthCode(state.dashMonth);
+
+          if (state.dashFY === 'ALL') {
+            $('dashActiveMonthLabel').textContent = targetMo === 'ALL' ? 'All Years & Months' : ('All ' + targetMo + ' across years');
+            $('dashTabsHint').textContent = 'All MMM-YYYY tabs combined';
+          } else {
+            var sy = fyStartYear(state.dashFY);
+            $('dashActiveMonthLabel').textContent = targetMo === 'ALL'
+              ? (state.dashFY + ' (All 12 Months)')
+              : getMonthYearForFY(state.dashFY, targetMo);
+            $('dashTabsHint').textContent = 'Tabs: APR-' + sy + ' to MAR-' + (sy + 1);
+          }
+
+          var fyFiltered = state.allEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
+          var filtered = targetMo === 'ALL'
+            ? fyFiltered
+            : fyFiltered.filter(function (x) { return getEntryMonth(x) === targetMo; });
+
+          var totalSales = 0, totalComm = 0, totalProduct = 0, totalPo = 0, totalGst = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0;
+          filtered.forEach(function (x) {
+            totalPo += toNum(x.poValue);
+            totalProduct += toNum(x.productValue);
+            totalSales += toNum(x.totalValue);
+            totalComm += toNum(x.totalCommission);
+            totalGst += toNum(x.gstValue);
+            if (x.paymentStatus === 'RCD') {
+              collectedAmt += toNum(x.totalValue);
+            } else {
+              pendingAmt += toNum(x.totalValue);
+              pendingCnt += 1;
+            }
+          });
+
+          if ($('kpiPoVal')) $('kpiPoVal').textContent = fmtINRCompact(totalPo);
+          if ($('kpiSalesVal')) $('kpiSalesVal').textContent = fmtINRCompact(totalProduct);
+          if ($('kpiEntries')) $('kpiEntries').textContent = filtered.length + (filtered.length === 1 ? ' entry' : ' entries');
+          if ($('kpiComm')) $('kpiComm').textContent = fmtINRCompact(totalComm);
+          if ($('kpiProductVal')) $('kpiProductVal').textContent = 'Sales Value: ' + fmtINRCompact(totalProduct);
+          if ($('kpiSales')) $('kpiSales').textContent = fmtINRCompact(totalSales);
+          if ($('kpiCommPct')) $('kpiCommPct').textContent = fmtINRCompact(filtered.reduce(function (sum, x) {
+            return sum + toNum(x.commissionValuePct);
+          }, 0));
+          if ($('kpiPendingAmt')) $('kpiPendingAmt').textContent = fmtINRCompact(pendingAmt);
+          if ($('kpiPendingCnt')) $('kpiPendingCnt').textContent = pendingCnt + ' pending ' + (pendingCnt === 1 ? 'order' : 'orders');
+          if ($('kpiCollectedAmt')) $('kpiCollectedAmt').textContent = fmtINRCompact(collectedAmt);
+          if ($('kpiGstAmt')) $('kpiGstAmt').textContent = 'GST: ' + fmtINRCompact(totalGst);
+
+          // Dynamic Sales Person Table
+          var repMap = {};
+          var repList = [];
+          state.salesPersons.forEach(function (sp) {
+            if (sp.active !== false || filtered.some(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); })) {
+              repMap[sp.code] = sp;
+              repList.push(sp);
+            }
+          });
+          filtered.forEach(function (x) {
+            var repCode = String(x.salesPerson || '').trim();
+            if (repCode && !repMap[repCode]) {
+              var extra = { code: repCode, name: repCode, active: false };
+              repMap[repCode] = extra;
+              repList.push(extra);
+            }
+          });
+
+          var tbody = $('salesPersonTable');
+          tbody.innerHTML = repList.map(function (sp) {
+            var rows = filtered.filter(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); });
+            var sVal = rows.reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+            var cVal = rows.reduce(function (a, b) { return a + toNum(b.totalCommission); }, 0);
+            var pVal = rows.filter(function (x) { return x.paymentStatus !== 'RCD'; }).reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+            var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
+            var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
+            return (
+              '<tr>' +
+              '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
+              '<td class="py-2 px-2 text-right font-medium text-slate-700">' + rows.length + '</td>' +
+              '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
+              '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
+              '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
+              '</tr>'
+            );
+          }).join('');
+
+          // Monthly Sales Chart
+          $('chartTitle').textContent = fyLabel + ' Monthly Sales (Total Value ₹)';
+          var chartLabels = FY_MONTHS.map(function (mo) {
+            if (state.dashFY === 'ALL') return mo;
+            var my = getMonthYearForFY(state.dashFY, mo);
+            return mo + '-' + my.slice(-2);
+          });
+          var monthlyTotals = FY_MONTHS.map(function (mo) {
+            return fyFiltered
+              .filter(function (x) { return getEntryMonth(x) === mo; })
+              .reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+          });
+          var barColors = FY_MONTHS.map(function (mo) {
+            return (targetMo === mo) ? '#059669' : '#1e3a8a';
+          });
+
+          var ctx = $('monthlyChart').getContext('2d');
+          if (state.chartInstance) {
+            state.chartInstance.data.labels = chartLabels;
+            state.chartInstance.data.datasets[0].data = monthlyTotals;
+            state.chartInstance.data.datasets[0].backgroundColor = barColors;
+            state.chartInstance.update();
+          } else if (typeof Chart !== 'undefined') {
+            state.chartInstance = new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: chartLabels,
+                datasets: [{
+                  label: 'Total Value (₹)',
+                  data: monthlyTotals,
+                  backgroundColor: barColors,
+                  borderRadius: 6
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                onClick: function (evt, elements) {
+                  if (elements && elements.length > 0) {
+                    var idx = elements[0].index;
+                    if (idx >= 0 && idx < FY_MONTHS.length) {
+                      state.dashMonth = FY_MONTHS[idx];
+                      renderDashboard();
+                    }
+                  }
+                },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: function (c) { return fmtINR(c.parsed.y); }
+                    }
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      callback: function (v) { return '₹' + Number(v).toLocaleString('en-IN'); },
+                      font: { size: 10 }
+                    }
+                  },
+                  x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 10 } }
+                  }
+                }
+              }
+            });
+          }
+        }
+
+        // ---------- CHANGE PIN CONTROLLER ----------
+        function openChangePinDialog() {
+          if (!state.currentUser) return;
+          $('currentPinInput').value = '';
+          $('newPinInput').value = '';
+          $('confirmPinInput').value = '';
+          $('changePinError').classList.add('hidden');
+
+          var isAdm = (state.currentUser.role === 'ADMIN');
+          var adminGroup = $('changePinAdminUserGroup');
+          if (isAdm) {
+            adminGroup.classList.remove('hidden');
+            var targetSel = $('changePinTargetUser');
+            targetSel.innerHTML = state.salesPersons.map(function (sp) {
+              return '<option value="' + escapeHtml(sp.code) + '"' + (sp.code === state.currentUser.code ? ' selected' : '') + '>' +
+                escapeHtml(sp.code + ' — ' + sp.name + (sp.role === 'ADMIN' ? ' [Admin]' : '')) + '</option>';
+            }).join('');
+          } else {
+            adminGroup.classList.add('hidden');
+          }
+          $('changePinModal').classList.remove('hidden');
+        }
+
+        function handleSaveNewPin() {
+          if (!state.currentUser) return;
+          var curPin = $('currentPinInput').value.trim();
+          var newPin = $('newPinInput').value.trim();
+          var confPin = $('confirmPinInput').value.trim();
+          var errEl = $('changePinError');
+
+          var isAdm = (state.currentUser.role === 'ADMIN');
+          var targetCode = isAdm ? $('changePinTargetUser').value : state.currentUser.code;
+
+          if (!curPin) {
+            errEl.textContent = 'Please enter your current PIN.';
+            errEl.classList.remove('hidden');
+            return;
+          }
+          if (!newPin || newPin.length < 4 || newPin.length > 8) {
+            errEl.textContent = 'New PIN must be between 4 and 8 digits.';
+            errEl.classList.remove('hidden');
+            return;
+          }
+          if (newPin !== confPin) {
+            errEl.textContent = 'New PIN and Confirm PIN do not match.';
+            errEl.classList.remove('hidden');
+            return;
+          }
+
+          var saveBtn = $('saveNewPinBtn');
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Updating...';
+
+          if (IS_LIVE_GAS && isAppOnline()) {
+            google.script.run
+              .withSuccessHandler(function (res) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Update PIN';
+                if (res && res.ok) {
+                  if (targetCode === state.currentUser.code) {
+                    state.currentUser.pin = newPin;
+                    saveSession(state.currentUser);
+                  }
+                  $('changePinModal').classList.add('hidden');
+                  showToast(res.message || 'PIN updated successfully!');
+                } else {
+                  errEl.textContent = (res && res.message) ? res.message : 'Failed to update PIN.';
+                  errEl.classList.remove('hidden');
+                }
+              })
+              .withFailureHandler(function (err) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Update PIN';
+                errEl.textContent = 'Error: ' + (err.message || err);
+                errEl.classList.remove('hidden');
+              })
+              .updateUserPin(state.currentUser.code, curPin, targetCode, newPin);
+          } else {
+            // Preview Mode update
+            setTimeout(function () {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Update PIN';
+              if (curPin !== state.currentUser.pin) {
+                errEl.textContent = 'Current PIN is incorrect.';
+                errEl.classList.remove('hidden');
+                return;
+              }
+              var target = state.salesPersons.find(function (u) { return u.code === targetCode; });
+              if (target) target.pin = newPin;
+              if (targetCode === state.currentUser.code) {
+                state.currentUser.pin = newPin;
+                saveSession(state.currentUser);
+              }
+              $('changePinModal').classList.add('hidden');
+              showToast('PIN updated successfully for ' + targetCode + ' (Preview Mode)!');
+            }, 200);
+          }
+        }
+
+        // ---------- EMAIL REPORT CONTROLLER ----------
+        function getQuarterFromMonth(mo) {
+          var m = String(mo || '').toUpperCase().trim();
+          if (['APR', 'MAY', 'JUN'].indexOf(m) !== -1) return 'Q1';
+          if (['JUL', 'AUG', 'SEP'].indexOf(m) !== -1) return 'Q2';
+          if (['OCT', 'NOV', 'DEC'].indexOf(m) !== -1) return 'Q3';
+          if (['JAN', 'FEB', 'MAR'].indexOf(m) !== -1) return 'Q4';
+          return 'Q1';
+        }
+
+        function populateEmailReportOptions() {
+          var mSel = $('emailMonthSelect');
+          mSel.innerHTML = CAL_MONTHS.map(function (mo) {
+            return '<option value="' + mo + '">' + mo + '</option>';
+          }).join('');
+          mSel.value = currentCalMonth();
+
+          var ySel = $('emailYearSelect');
+          var curY = new Date().getFullYear();
+          var yOpts = [];
+          for (var y = curY - 2; y <= curY + 5; y++) {
+            yOpts.push('<option value="' + y + '">' + y + '</option>');
+          }
+          ySel.innerHTML = yOpts.join('');
+          ySel.value = String(curY);
+
+          var curStart = fyStartYear(getCurrentFY());
+          var fySet = {};
+          for (var f = curStart - 1; f <= curStart + 5; f++) {
+            fySet['FY ' + String(f).slice(-2) + '-' + String(f + 1).slice(-2)] = true;
+          }
+          state.allEntries.forEach(function (e) {
+            var mo = getEntryMonth(e);
+            var yr = getEntryYear(e);
+            if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
+          });
+          var fys = Object.keys(fySet).sort();
+          var fyHtml = fys.map(function (fy) {
+            return '<option value="' + fy + '">' + fy + '</option>';
+          }).join('');
+
+          $('emailQuarterFySelect').innerHTML = fyHtml;
+          $('emailQuarterFySelect').value = getCurrentFY();
+          $('emailFySelect').innerHTML = fyHtml;
+          $('emailFySelect').value = getCurrentFY();
+          $('emailQuarterSelect').value = getQuarterFromMonth(currentCalMonth());
+
+          var partySet = {};
+          state.allEntries.forEach(function (e) {
+            if (e.partyName && e.partyName.trim()) partySet[e.partyName.trim()] = true;
+          });
+          var parties = Object.keys(partySet).sort();
+          $('emailPartySelect').innerHTML = '<option value="">All Parties</option>' + parties.map(function (p) {
+            return '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>';
+          }).join('');
+
+          $('emailRepSelect').innerHTML = '<option value="">All Reps</option>' + state.salesPersons.map(function (sp) {
+            return '<option value="' + escapeHtml(sp.code) + '">' + escapeHtml(sp.code + (sp.name && sp.name !== sp.code ? ' — ' + sp.name : '')) + '</option>';
+          }).join('');
+
+          if (state.currentUser && state.currentUser.email) {
+            $('emailToInput').value = state.currentUser.email;
+          } else {
+            $('emailToInput').value = '';
+          }
+        }
+
+        function openEmailReportModal() {
+          if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
+            showToast('Only Admin can dispatch email reports.', true);
+            return;
+          }
+          populateEmailReportOptions();
+          setPillValue('emailPeriodPills', 'emailReportPeriodType', 'MONTH');
+          $('emailMonthGroup').classList.remove('hidden');
+          $('emailQuarterGroup').classList.add('hidden');
+          $('emailFyGroup').classList.add('hidden');
+          $('emailReportMsg').classList.add('hidden');
+          updateEmailReportPreview();
+          $('emailReportModal').classList.remove('hidden');
+        }
+
+        function updateEmailReportPreview() {
+          var pt = state.emailReportPeriodType || 'MONTH';
+          var mo = $('emailMonthSelect').value;
+          var yr = $('emailYearSelect').value;
+          var targetMY = mo + '-' + yr;
+          var qtr = $('emailQuarterSelect').value;
+          var qtrFY = $('emailQuarterFySelect').value;
+          var fy = $('emailFySelect').value;
+
+          var targetParty = ($('emailPartySelect').value || '').toLowerCase().trim();
+          var targetProd = ($('emailProductSelect').value || '').toUpperCase().trim();
+          var targetRep = ($('emailRepSelect').value || '').toUpperCase().trim();
+
+          var filtered = state.allEntries.filter(function (x) {
+            if (targetParty && (x.partyName || '').toLowerCase().trim() !== targetParty) return false;
+            if (targetProd && (x.productKeyword || '').toUpperCase().trim() !== targetProd) return false;
+            if (targetRep && (x.salesPerson || '').toUpperCase().trim() !== targetRep) return false;
+
+            var entryMo = getEntryMonth(x);
+            var entryYr = getEntryYear(x);
+            var entryMY = (entryMo && entryYr) ? (entryMo + '-' + entryYr) : (x.monthYear || '').toUpperCase().trim();
+            var entryFY = getFYFromMonthYear(entryMo, entryYr);
+            var entryQtr = getQuarterFromMonth(entryMo);
+
+            if (pt === 'MONTH') {
+              return entryMY === targetMY;
+            } else if (pt === 'QUARTER') {
+              return entryFY === qtrFY && entryQtr === qtr;
+            } else if (pt === 'FY') {
+              return entryFY === fy;
+            }
+            return true;
+          });
+
+          var totalOrders = filtered.length;
+          var totalSales = 0;
+          var totalComm = 0;
+          var pendingAmt = 0;
+
+          filtered.forEach(function (x) {
+            totalSales += toNum(x.totalValue);
+            totalComm += toNum(x.totalCommission);
+            if (x.paymentStatus !== 'RCD') {
+              pendingAmt += toNum(x.totalValue);
+            }
+          });
+
+          $('emailPreviewOrders').textContent = totalOrders;
+          $('emailPreviewSales').textContent = fmtINRCompact(totalSales);
+          $('emailPreviewComm').textContent = fmtINRCompact(totalComm);
+          $('emailPreviewPending').textContent = fmtINRCompact(pendingAmt);
+        }
+
+        function handleSendEmailReport() {
+          if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
+            showToast('Only Admin can dispatch email reports.', true);
+            return;
+          }
+
+          var pt = state.emailReportPeriodType || 'MONTH';
+          var mo = $('emailMonthSelect').value;
+          var yr = $('emailYearSelect').value;
+          var targetMY = mo + '-' + yr;
+          var qtr = $('emailQuarterSelect').value;
+          var qtrFY = $('emailQuarterFySelect').value;
+          var fy = $('emailFySelect').value;
+
+          var toEmails = $('emailToInput').value.trim();
+
+          var filters = {
+            periodType: pt,
+            monthYear: targetMY,
+            quarter: qtr,
+            fy: (pt === 'QUARTER' ? qtrFY : (pt === 'FY' ? fy : getFYFromMonthYear(mo, yr))),
+            partyName: $('emailPartySelect').value.trim(),
+            productKeyword: $('emailProductSelect').value.trim(),
+            salesPerson: $('emailRepSelect').value.trim()
+          };
+
+          var payload = {
+            authCode: state.currentUser.code,
+            authPin: state.currentUser.pin,
+            toEmails: toEmails,
+            filters: filters
+          };
+
+          var btn = $('sendEmailReportBtn');
+          var btnText = $('sendEmailReportBtnText');
+          var msgEl = $('emailReportMsg');
+
+          btn.disabled = true;
+          btnText.textContent = 'Sending...';
+          msgEl.classList.add('hidden');
+
+          if (IS_LIVE_GAS && isAppOnline()) {
+            google.script.run
+              .withSuccessHandler(function (res) {
+                btn.disabled = false;
+                btnText.textContent = 'Send Email Report';
+                if (res && res.ok) {
+                  $('emailReportModal').classList.add('hidden');
+                  showToast(res.message || 'Email report sent successfully!');
+                } else {
+                  msgEl.className = 'p-2.5 rounded-xl text-xs font-semibold text-center bg-rose-50 text-rose-700 border border-rose-200';
+                  msgEl.textContent = (res && res.message) ? res.message : 'Failed to send report.';
+                  msgEl.classList.remove('hidden');
+                }
+              })
+              .withFailureHandler(function (err) {
+                btn.disabled = false;
+                btnText.textContent = 'Send Email Report';
+                msgEl.className = 'p-2.5 rounded-xl text-xs font-semibold text-center bg-rose-50 text-rose-700 border border-rose-200';
+                msgEl.textContent = 'Error: ' + (err.message || err);
+                msgEl.classList.remove('hidden');
+              })
+              .sendEmailReport(payload);
+          } else {
+            // Preview Mode simulation
+            setTimeout(function () {
+              btn.disabled = false;
+              btnText.textContent = 'Send Email Report';
+              $('emailReportModal').classList.add('hidden');
+              var dest = toEmails || (state.currentUser.email || 'configured Admin email');
+              showToast('Email report preview dispatched (Preview Mode) to ' + dest + '!');
+            }, 400);
+          }
+        }
+
+        // ---------- BACKUP CONTROLLER ----------
+        function handleBackupClick() {
+          if (!state.currentUser || state.currentUser.role !== 'ADMIN') {
+            showToast('Only Admin can trigger backups.', true);
+            return;
+          }
+          var btn = $('backupDataBtn');
+          var origHtml = btn.innerHTML;
+          btn.disabled = true;
+          btn.classList.add('opacity-70');
+          btn.textContent = 'Backing up...';
+
+          if (IS_LIVE_GAS && isAppOnline()) {
+            google.script.run
+              .withSuccessHandler(function (res) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+                btn.innerHTML = origHtml;
+                if (res && res.ok) {
+                  showToast('Backup created: ' + res.fileName + (res.deletedCount ? ' (' + res.deletedCount + ' old purged)' : ''));
+                } else {
+                  showToast('Backup completed.', false);
+                }
+              })
+              .withFailureHandler(function (err) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+                btn.innerHTML = origHtml;
+                showToast('Backup failed: ' + (err.message || err), true);
+              })
+              .triggerManualBackup({
+                authCode: state.currentUser.code,
+                authPin: state.currentUser.pin
+              });
+          } else {
+            setTimeout(function () {
+              btn.disabled = false;
+              btn.classList.remove('opacity-70');
+              btn.innerHTML = origHtml;
+              showToast('Manual backup simulated: spreadsheet copied to "RK Sales Backups" folder (Preview Mode).');
+            }, 400);
+          }
+        }
+
+        // ---------- WIRE UP EVENTS ----------
+        populateYearOptions();
+        populatePartyDatalist();
+        populateDashFYOptions();
+
+        setupPillGroup('regionPills', 'selectedRegion', 'regionOther');
+        populateRegionPills();
+        setupPillGroup('commTypePills', 'selectedCommType', null, updateCommTypeState);
+        setupPillGroup('commPctPills', 'selectedCommPct', 'commPctOther', updateLiveCalc);
+        setupPillGroup('termsPills', 'selectedTerms', 'termsOther');
+        setupPillGroup('statusPills', 'selectedStatus');
+        setupPillGroup('wbPills', 'selectedWB');
+        setupPillGroup('emailPeriodPills', 'emailReportPeriodType', null, function (pt) {
+          $('emailMonthGroup').classList.toggle('hidden', pt !== 'MONTH');
+          $('emailQuarterGroup').classList.toggle('hidden', pt !== 'QUARTER');
+          $('emailFyGroup').classList.toggle('hidden', pt !== 'FY');
+          updateEmailReportPreview();
+        });
+
+        $('month').addEventListener('change', updateTargetTabBadge);
+        $('year').addEventListener('change', updateTargetTabBadge);
+
+        $('poDate').addEventListener('change', function () {
+          if ($('responseId').value) return;
+          var v = $('poDate').value;
+          var p = v ? v.split('-') : [];
+          if (p.length === 3) {
+            var yr = p[0];
+            var mo = CAL_MONTHS[Number(p[1]) - 1];
+            if (mo) $('month').value = mo;
+            if (yr) {
+              if (!$('year').querySelector('option[value="' + yr + '"]')) {
+                var opt = document.createElement('option');
+                opt.value = yr;
+                opt.textContent = yr;
+                $('year').appendChild(opt);
+              }
+              $('year').value = yr;
+            }
+            updateTargetTabBadge();
+          }
+        });
+
+        $('poValue').addEventListener('input', function () {
+          var pvInput = $('productValue');
+          if (!pvInput.dataset.userEdited || pvInput.value === pvInput.dataset.lastPoVal || pvInput.value === '') {
+            pvInput.value = $('poValue').value;
+            pvInput.dataset.lastPoVal = $('poValue').value;
+          }
+          updateLiveCalc();
+        });
+
+        $('productValue').addEventListener('input', function () {
+          $('productValue').dataset.userEdited = 'true';
+          updateLiveCalc();
+        });
+
+        $('prodKeywordPills').addEventListener('click', function (e) {
+          var btn = e.target.closest('button[data-val]');
+          if (!btn) return;
+          var val = btn.getAttribute('data-val');
+          var tokens = getKeywordTokens();
+
+          var upper = val.toUpperCase();
+          var idx = tokens.indexOf(upper);
+          if (idx !== -1) {
+            tokens.splice(idx, 1);
+          } else {
+            tokens.push(upper);
+          }
+          $('productKeyword').value = tokens.join(' + ');
+          updateProdKeywordPillStates();
+        });
+
+        $('productKeyword').addEventListener('input', updateProdKeywordPillStates);
+
+        ['freightCharges', 'commissionFixed', 'commPctOther'].forEach(function (id) {
+          $(id).addEventListener('input', updateLiveCalc);
+        });
+
+        document.querySelectorAll('.nav-btn').forEach(function (b) {
+          b.addEventListener('click', function () {
+            switchTab(b.getAttribute('data-tab'));
+          });
+        });
+
+        $('salesForm').addEventListener('submit', handleSubmit);
+        $('resetFormBtn').addEventListener('click', function () { resetForm(true); });
+        $('cancelEditBtn').addEventListener('click', function () { resetForm(true); });
+        $('refreshBtn').addEventListener('click', function () { syncData(true); });
+        $('refreshBtn').addEventListener('click', function () {
+          syncData(true, { skipCache: true, fy: state.dashFY || getCurrentFY(), all: false });
+        });
+        window.addEventListener('online', function () {
+          updateConnectionStatus();
+          syncData(true);
+        });
+        window.addEventListener('offline', updateConnectionStatus);
+        $('recentSearch').addEventListener('input', renderRecentList);
+        $('logoutBtn').addEventListener('click', logoutUser);
+        $('backupDataBtn').addEventListener('click', handleBackupClick);
+        $('offlineModeToggle').addEventListener('click', function () { toggleOfflineMode(); });
+        $('disableForceOfflineBtn').addEventListener('click', function () { toggleOfflineMode(false); });
+
+        // Change PIN handlers
+        $('openChangePinBtn').addEventListener('click', openChangePinDialog);
+        $('closeChangePinBtn').addEventListener('click', function () { $('changePinModal').classList.add('hidden'); });
+        $('cancelChangePinBtn').addEventListener('click', function () { $('changePinModal').classList.add('hidden'); });
+        $('saveNewPinBtn').addEventListener('click', handleSaveNewPin);
+
+        // Email Report handlers
+        $('openEmailReportBtn').addEventListener('click', openEmailReportModal);
+        $('closeEmailReportBtn').addEventListener('click', function () { $('emailReportModal').classList.add('hidden'); });
+        $('cancelEmailReportBtn').addEventListener('click', function () { $('emailReportModal').classList.add('hidden'); });
+        $('sendEmailReportBtn').addEventListener('click', handleSendEmailReport);
+
+        ['emailMonthSelect', 'emailYearSelect', 'emailQuarterSelect', 'emailQuarterFySelect', 'emailFySelect', 'emailPartySelect', 'emailProductSelect', 'emailRepSelect'].forEach(function (id) {
+          $(id).addEventListener('change', updateEmailReportPreview);
+        });
+
+        // Keypad & PIN input handlers
+        document.querySelectorAll('.keypad-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            if (state.enteredPin.length < 8) {
+              state.enteredPin += btn.getAttribute('data-num');
+              updatePinDots();
+              if (state.enteredPin.length === 4) {
+                var selCode = $('loginUserSelect').value;
+                if (selCode) executeLogin(selCode, state.enteredPin);
+              }
+            }
+          });
+        });
+
+        $('keypadBackspace').addEventListener('click', function () {
+          if (state.enteredPin.length > 0) {
+            state.enteredPin = state.enteredPin.slice(0, -1);
             updatePinDots();
-            if (state.enteredPin.length === 4) {
-              var selCode = $('loginUserSelect').value;
-              if (selCode) executeLogin(selCode, state.enteredPin);
-            }
           }
         });
-      });
 
-      $('keypadBackspace').addEventListener('click', function () {
-        if (state.enteredPin.length > 0) {
-          state.enteredPin = state.enteredPin.slice(0, -1);
+        $('keypadClear').addEventListener('click', clearPin);
+
+        $('pinDotsContainer').addEventListener('click', function () {
+          $('pinHiddenInput').focus();
+        });
+
+        $('pinHiddenInput').addEventListener('input', function (e) {
+          state.enteredPin = e.target.value.replace(/\D/g, '').slice(0, 8);
           updatePinDots();
-        }
-      });
+          if (state.enteredPin.length === 4) {
+            var selCode = $('loginUserSelect').value;
+            if (selCode) executeLogin(selCode, state.enteredPin);
+          }
+        });
 
-      $('keypadClear').addEventListener('click', clearPin);
-
-      $('pinDotsContainer').addEventListener('click', function () {
-        $('pinHiddenInput').focus();
-      });
-
-      $('pinHiddenInput').addEventListener('input', function (e) {
-        state.enteredPin = e.target.value.replace(/\D/g, '').slice(0, 8);
-        updatePinDots();
-        if (state.enteredPin.length === 4) {
+        $('loginSubmitBtn').addEventListener('click', function () {
           var selCode = $('loginUserSelect').value;
-          if (selCode) executeLogin(selCode, state.enteredPin);
+          executeLogin(selCode, state.enteredPin);
+        });
+
+        // ---------- INIT ----------
+        resetForm(false);
+        var savedSession = loadSavedSession();
+        if (savedSession) {
+          setAuthenticatedUser(savedSession);
+        } else {
+          showLoginModal();
         }
-      });
+        RKSalesDB.init().catch(function (err) {
+          console.warn('RKSalesDB init warning:', err);
+        });
+        syncData(false);
+        registerPwa();
+        setupPwaInstallButton();
+        updateOfflineModeUI();
+        updateConnectionStatus();
 
-      $('loginSubmitBtn').addEventListener('click', function () {
-        var selCode = $('loginUserSelect').value;
-        executeLogin(selCode, state.enteredPin);
-      });
-
-      // ---------- INIT ----------
-      resetForm(false);
-      var savedSession = loadSavedSession();
-      if (savedSession) {
-        setAuthenticatedUser(savedSession);
-      } else {
-        showLoginModal();
-      }
-      RKSalesDB.init().catch(function (err) {
-        console.warn('RKSalesDB init warning:', err);
-      });
-      syncData(false);
-      registerPwa();
-      setupPwaInstallButton();
-      updateOfflineModeUI();
-      updateConnectionStatus();
-
-      window.rkSalesApp = {
-        getEntryMonth: getEntryMonth,
-        getEntryYear: getEntryYear,
-        normalizeEntry: normalizeEntry,
-        getFYFromMonthYear: getFYFromMonthYear,
-        renderDashboard: renderDashboard,
-        applyDashboardPayload: applyDashboardPayload,
-        state: state,
-        RKSalesDB: RKSalesDB,
-        toggleOfflineMode: toggleOfflineMode,
-        syncData: syncData,
-        flushPendingQueue: flushPendingQueue
-      };
-    })();
+        window.rkSalesApp = {
+          getEntryMonth: getEntryMonth,
+          getEntryYear: getEntryYear,
+          normalizeEntry: normalizeEntry,
+          getFYFromMonthYear: getFYFromMonthYear,
+          renderDashboard: renderDashboard,
+          applyDashboardPayload: applyDashboardPayload,
+          state: state,
+          RKSalesDB: RKSalesDB,
+          toggleOfflineMode: toggleOfflineMode,
+          syncData: syncData,
+          flushPendingQueue: flushPendingQueue,
+          hashPin: hashPin,
+          encryptPin: encryptPin,
+          decryptPin: decryptPin,
+          cacheOfflineCredential: cacheOfflineCredential,
+          localLogin: localLogin,
+          populateRegionPills: populateRegionPills
+        };
+      })();
   </script>
 </body>
 

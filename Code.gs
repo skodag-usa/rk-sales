@@ -343,15 +343,71 @@ function getSalesPersonsLookup_(ss) {
 }
 
 /**
- * Returns active regions from Lookup sheet (Columns H & I).
- * Initializes Column H & I if not present.
+ * Returns active regions from the spreadsheet.
+ * Flexibly auto-detects:
+ * 1. Dedicated sheet: 'Region', 'Regions', 'Region Lookup', 'Regions Lookup', 'Territory', 'Territories'
+ * 2. 'Lookup' sheet: searches row 1 for header containing 'REGION' (e.g. Region, Regions, Region Name, Territory, Zone)
+ * 3. 'Lookup' sheet: Column H & I (fallback)
+ * Initializes Column H & I in 'Lookup' only if no region configuration is found anywhere.
  */
 function getRegionsLookup_(ss) {
   if (!ss) return DEFAULT_REGIONS.slice();
+
+  function extractRegionsFromValues_(vals, regColIdx, activeColIdx) {
+    var list = [];
+    for (var i = 0; i < vals.length; i++) {
+      var row = vals[i];
+      var reg = String(row[regColIdx] || '').trim();
+      if (!reg) continue;
+      var upperReg = reg.toUpperCase();
+      if (upperReg === 'REGION' || upperReg === 'REGIONS' || upperReg === 'REGION NAME' || upperReg === 'TERRITORY' || upperReg === 'ZONE') {
+        continue;
+      }
+      var isActive = true;
+      if (activeColIdx >= 0 && activeColIdx < row.length) {
+        var activeVal = String(row[activeColIdx] === '' || row[activeColIdx] === null || row[activeColIdx] === undefined ? 'YES' : row[activeColIdx]).toUpperCase().trim();
+        isActive = (activeVal !== 'NO' && activeVal !== 'FALSE' && activeVal !== 'N' && activeVal !== '0');
+      }
+      if (isActive && list.indexOf(reg) === -1) {
+        list.push(reg);
+      }
+    }
+    return list;
+  }
+
+  // 1. Check for dedicated region sheets
+  var dedicatedNames = ['Region', 'Regions', 'Region Lookup', 'Regions Lookup', 'Territory', 'Territories'];
+  for (var d = 0; d < dedicatedNames.length; d++) {
+    var regSheet = ss.getSheetByName(dedicatedNames[d]);
+    if (regSheet) {
+      var rLast = regSheet.getLastRow();
+      var cLast = regSheet.getLastColumn();
+      if (rLast >= 1 && cLast >= 1) {
+        var allVals = regSheet.getRange(1, 1, rLast, cLast).getValues();
+        var headerRow = allVals[0] || [];
+        var rCol = 0;
+        var aCol = -1;
+        for (var c = 0; c < headerRow.length; c++) {
+          var h = String(headerRow[c] || '').trim().toUpperCase();
+          if (h.indexOf('REGION') !== -1 || h === 'TERRITORY' || h === 'ZONE' || h === 'NAME') {
+            rCol = c;
+          }
+          if (h === 'ACTIVE' || h === 'STATUS' || h === 'IS ACTIVE' || h === 'IS_ACTIVE') {
+            aCol = c;
+          }
+        }
+        var foundFromDedicated = extractRegionsFromValues_(allVals, rCol, aCol);
+        if (foundFromDedicated.length > 0) {
+          return foundFromDedicated;
+        }
+      }
+    }
+  }
+
+  // 2. Check in 'Lookup' sheet
   var sh = ss.getSheetByName('Lookup');
   if (!sh) {
     getSalesPersonsInternal_(ss);
-  getRegionsLookup_(ss);
     sh = ss.getSheetByName('Lookup');
   }
   if (!sh) return DEFAULT_REGIONS.slice();
@@ -359,15 +415,47 @@ function getRegionsLookup_(ss) {
   var lastRow = sh.getLastRow();
   var lastCol = sh.getLastColumn();
 
-  var hasRegionHeader = false;
-  try {
-    if (lastCol >= 8) {
-      var hVal = String(sh.getRange(1, 8).getValue() || '').trim().toUpperCase();
-      hasRegionHeader = (hVal === 'REGION' || hVal === 'REGIONS');
-    }
-  } catch (e) {}
+  if (lastRow >= 1 && lastCol >= 1) {
+    var numColsToScan = Math.min(lastCol, 26);
+    var headers = sh.getRange(1, 1, 1, numColsToScan).getValues()[0] || [];
+    var matchedCol = -1;
+    var matchedActiveCol = -1;
 
-  if (lastCol < 8 || !hasRegionHeader) {
+    for (var hc = 0; hc < headers.length; hc++) {
+      var hText = String(headers[hc] || '').trim().toUpperCase();
+      if (hText.indexOf('REGION') !== -1 || hText === 'TERRITORY' || hText === 'ZONE') {
+        matchedCol = hc + 1; // 1-based column
+        if (hc + 1 < headers.length) {
+          var nextH = String(headers[hc + 1] || '').trim().toUpperCase();
+          if (nextH === 'ACTIVE' || nextH === 'STATUS' || nextH === 'IS ACTIVE') {
+            matchedActiveCol = hc + 2;
+          }
+        }
+        break;
+      }
+    }
+
+    if (matchedCol > 0 && lastRow >= 2) {
+      var colsToRead = matchedActiveCol > 0 ? (matchedActiveCol - matchedCol + 1) : 1;
+      var regionVals = sh.getRange(2, matchedCol, lastRow - 1, colsToRead).getValues();
+      var extracted = extractRegionsFromValues_(regionVals, 0, matchedActiveCol > 0 ? (colsToRead - 1) : -1);
+      if (extracted.length > 0) {
+        return extracted;
+      }
+    }
+  }
+
+  // 3. Fallback: Check if Column H & I exist and have data
+  if (lastCol >= 8 && lastRow >= 2) {
+    var colHVals = sh.getRange(2, 8, lastRow - 1, Math.min(2, Math.max(1, lastCol - 7))).getValues();
+    var hList = extractRegionsFromValues_(colHVals, 0, colHVals[0].length > 1 ? 1 : -1);
+    if (hList.length > 0) {
+      return hList;
+    }
+  }
+
+  // 4. Default initialization in Column H & I if sheet has no regions at all
+  if (lastCol < 8 || !sh.getRange(1, 8).getValue()) {
     sh.getRange(1, 8, 1, 2).setValues([['Region', 'Active']]).setFontWeight('bold').setBackground('#d9ead3');
     var initRegs = DEFAULT_REGIONS.map(function (reg) { return [reg, 'YES']; });
     sh.getRange(2, 8, initRegs.length, 2).setValues(initRegs);
@@ -376,23 +464,9 @@ function getRegionsLookup_(ss) {
         SpreadsheetApp.newDataValidation().requireValueInList(['YES', 'NO'], true).build()
       );
     } catch (e) {}
-    return DEFAULT_REGIONS.slice();
   }
 
-  var numRows = Math.max(1, lastRow - 1);
-  var vals = sh.getRange(2, 8, numRows, 2).getValues();
-  var list = [];
-  for (var i = 0; i < vals.length; i++) {
-    var reg = String(vals[i][0] || '').trim();
-    if (!reg) continue;
-    var activeVal = String(vals[i][1] === '' || vals[i][1] === null || vals[i][1] === undefined ? 'YES' : vals[i][1]).toUpperCase().trim();
-    var isActive = activeVal !== 'NO' && activeVal !== 'FALSE' && activeVal !== 'N' && activeVal !== '0';
-    if (isActive) {
-      list.push(reg);
-    }
-  }
-
-  return list.length ? list : DEFAULT_REGIONS.slice();
+  return DEFAULT_REGIONS.slice();
 }
 
 /**
@@ -989,16 +1063,33 @@ function getDashboardDataWithSS_(ss, options) {
     }
   } catch (e) {}
 
+  if (options.skipCache && cache) {
+    try {
+      cache.remove(cacheKey);
+      cache.remove('DASHBOARD_ALL');
+    } catch (e) {}
+  }
+
+  // Metadata lookups (salesPersons and regions) are always freshly retrieved
+  // so edits to Lookup or Region sheets reflect immediately without waiting for cache TTL.
+  var freshSalesPersons = getSalesPersonsLookup_(ss);
+  var freshRegions = getRegionsLookup_(ss);
+
   if (cache && !options.skipCache) {
     try {
       var cached = cache.get(cacheKey);
       if (cached) {
-        return JSON.parse(cached);
+        var parsed = JSON.parse(cached);
+        parsed.salesPersons = freshSalesPersons;
+        parsed.regions = freshRegions;
+        return parsed;
       }
     } catch (e) {}
   }
 
   var data = buildDashboardData_(ss, { fy: targetFY, all: isAll });
+  data.salesPersons = freshSalesPersons;
+  data.regions = freshRegions;
 
   if (cache) {
     try {

@@ -34,14 +34,18 @@
 
 - Nightly backup 1:00 AM to Drive folder `"RK Sales Backups"`; 30-day retention; manual trigger via UI/menu.
 
-## Auth
+## Auth & Offline Credential Security
 
 - PIN-based (`loginUser`, `updateUserPin`); roles ADMIN/SALES; sales scoped to own entries.
+- Offline Credentials Protection: Plaintext PINs are NEVER stored in persistent browser storage (`IndexedDB` `offlineAuth` store or `localStorage` `rk_sales_offline_auth_v1`). Offline credentials store salted SHA-256 hashes (`pinHash`) and obfuscated ciphertext (`encryptedPin`). Offline authentication verifies against `pinHash` with zero-knowledge, and automatically migrates legacy plaintext PIN records.
 
 ## Region Lookup Subsystem
 
-- Managed in `Lookup` sheet columns H (`Region`) & I (`Active`), initialized automatically with default regions: `R - Pune`, `N - Pune`, `MP`, `WB`.
-- Pre-seeded via `bootJson_` into the web app's initial payload (`#gasBoot`) and refreshed via `getDashboardData()`.
-- Client dynamically generates pill selection buttons in `#regionPills` with `__OTHER__` fallback for custom/historical regions.
+- Flexible Auto-Detection: `getRegionsLookup_(ss)` automatically discovers custom regions from:
+  1. Dedicated sheets (`Region`, `Regions`, `Region Lookup`, `Territory`, `Territories`).
+  2. Column scanning in `Lookup` sheet for headers containing `REGION`, `TERRITORY`, `ZONE` with optional adjacent `ACTIVE`/`STATUS` column.
+  3. Columns H (`Region`) & I (`Active`) fallback, initializing defaults (`R - Pune`, `N - Pune`, `MP`, `WB`) only if no region configuration exists.
+- Cache-Bypass Metadata: `getDashboardDataWithSS_` always returns freshly fetched `salesPersons` and `regions` lookups directly from the sheet, ensuring metadata edits reflect immediately without waiting for cache expiration. Sync button (`#refreshBtn`) explicitly passes `skipCache: true`.
+- Dynamic UI Pill Selection: In `Index.html`, `#regionPills` dynamically renders active regions from the sheet. If an existing selection becomes obsolete upon sync, it automatically selects the first active sheet region instead of falling back to `__OTHER__`.
 
 Source: `Code.gs`, `AGENTS.md`, `docs/superpowers/plans/`.
