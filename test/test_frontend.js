@@ -31,7 +31,9 @@ const requiredIds = [
   'emailFyGroup', 'emailFySelect', 'emailPartySelect', 'emailProductSelect',
   'emailRepSelect', 'emailToInput', 'emailPreviewBox', 'emailPreviewOrders',
   'emailPreviewSales', 'emailPreviewComm', 'emailPreviewPending',
-  'emailReportMsg', 'cancelEmailReportBtn', 'sendEmailReportBtn', 'sendEmailReportBtnText'
+  'emailReportMsg', 'cancelEmailReportBtn', 'sendEmailReportBtn', 'sendEmailReportBtnText',
+  // Offline Mode & Sync elements
+  'offlineModeToggle', 'forceOfflineBanner', 'syncBadge', 'syncCountBadge'
 ];
 
 requiredIds.forEach(id => {
@@ -176,7 +178,24 @@ const kpiEntriesText = elements['kpiEntries'].textContent;
 assert.ok(kpiEntriesText.includes('2 entries'), 'November dashboard must show 2 entries, got: ' + kpiEntriesText);
 console.log('✓ November dashboard filtering passed.');
 
-// Verify role behavior
+// Test 5: Verify login user selector population & pre-seeding
+console.log('Test 5: Verifying login user select population...');
+const loginUserSel = elements['loginUserSelect'];
+assert.ok(loginUserSel.innerHTML.includes('option value="TK"'), 'loginUserSelect must include TK option');
+assert.ok(app.state.salesPersons.length >= 1, 'salesPersons must be populated with active users on startup');
+console.log('✓ Login user selector populated successfully on startup.');
+
+// Test 6: Verify Regions lookup & pills
+console.log('Test 6: Verifying regions lookup and pill buttons...');
+assert.strictEqual(JSON.stringify(app.state.regions), JSON.stringify(['R - Pune', 'N - Pune', 'MP', 'WB']), 'state.regions must default to new regions');
+assert.strictEqual(app.state.selectedRegion, 'R - Pune', 'Default selected region must be R - Pune');
+const regionPillsEl = elements['regionPills'];
+assert.ok(regionPillsEl.innerHTML.includes('data-val="R - Pune"'), 'regionPills must contain R - Pune button');
+assert.ok(regionPillsEl.innerHTML.includes('data-val="N - Pune"'), 'regionPills must contain N - Pune button');
+assert.ok(regionPillsEl.innerHTML.includes('data-val="MP"'), 'regionPills must contain MP button');
+assert.ok(regionPillsEl.innerHTML.includes('data-val="WB"'), 'regionPills must contain WB button');
+console.log('✓ Regions lookup and pill buttons verified.');
+
 console.log('✓ Headless DOM simulation verified.');
 console.log('\n========================================');
 console.log('ALL Index.html TESTS PASSED SUCCESSFULLY!');

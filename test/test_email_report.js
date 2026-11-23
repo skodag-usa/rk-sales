@@ -47,13 +47,26 @@ class MockRange {
   setNumberFormat() { return this; }
   setDataValidation() { return this; }
   setFontSize() { return this; }
-  setFormulas() { return this; }
+  setFormulas(vals) {
+    if (!this.sheet.formulas) this.sheet.formulas = [];
+    for (let r = 0; r < vals.length; r++) {
+      const tr = this.row - 1 + r;
+      while (this.sheet.formulas.length <= tr) this.sheet.formulas.push([]);
+      for (let c = 0; c < vals[r].length; c++) {
+        const tc = this.col - 1 + c;
+        while (this.sheet.formulas[tr].length <= tc) this.sheet.formulas[tr].push('');
+        this.sheet.formulas[tr][tc] = vals[r][c];
+      }
+    }
+    return this;
+  }
   setFormula(f) {
+    if (!this.sheet.formulas) this.sheet.formulas = [];
     const tr = this.row - 1;
-    while (this.sheet.data.length <= tr) this.sheet.data.push([]);
+    while (this.sheet.formulas.length <= tr) this.sheet.formulas.push([]);
     const tc = this.col - 1;
-    while (this.sheet.data[tr].length <= tc) this.sheet.data[tr].push('');
-    this.sheet.data[tr][tc] = f;
+    while (this.sheet.formulas[tr].length <= tc) this.sheet.formulas[tr].push('');
+    this.sheet.formulas[tr][tc] = f;
     return this;
   }
   getFormulas() {
@@ -61,11 +74,15 @@ class MockRange {
     for (let r = 0; r < this.numRows; r++) {
       const rowArr = [];
       const tr = this.row - 1 + r;
+      const rowFormulas = (this.sheet.formulas && tr < this.sheet.formulas.length) ? this.sheet.formulas[tr] : [];
       const rowData = (tr < this.sheet.data.length) ? this.sheet.data[tr] : [];
       for (let c = 0; c < this.numCols; c++) {
         const tc = this.col - 1 + c;
-        const cell = tc < rowData.length ? rowData[tc] : '';
-        rowArr.push(typeof cell === 'string' && cell.startsWith('=') ? cell : '');
+        const fCell = tc < rowFormulas.length ? rowFormulas[tc] : '';
+        const dCell = tc < rowData.length ? rowData[tc] : '';
+        const cell = (typeof fCell === 'string' && fCell.startsWith('=')) ? fCell :
+                     (typeof dCell === 'string' && dCell.startsWith('=') ? dCell : '');
+        rowArr.push(cell);
       }
       res.push(rowArr);
     }
@@ -237,8 +254,7 @@ function buildTestSS() {
     ['ADMIN', 'Administrator', 'YES', '9999', 'ADMIN', 'admin@example.com']
   ]);
 
-  // Create All Entries sheet with HEADERS and sample data
-  const allEntries = ss.insertSheet('All Entries');
+  // Create month sheets with HEADERS and sample data
   const HEADERS = [
     'Sr. No.', 'MONTH', 'Sales Person', 'Party Name', 'Region',
     'Po No.', 'Po Date', 'PI No.', 'PI Date', 'Invoice No.', 'Invoice Date',
@@ -247,7 +263,6 @@ function buildTestSS() {
     'Commission Value %', 'Total Commission', 'Payment Terms', 'Paymet Status',
     'WB/Billing', 'Remark', 'Accounts Remark', 'Edit Link', 'Timestamp', 'Response ID'
   ];
-  allEntries.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
 
   // Sample entries: mix of months, reps, products, payment statuses
   const entries = [
@@ -267,8 +282,36 @@ function buildTestSS() {
   ];
 
   for (const entry of entries) {
-    const rowIdx = allEntries.getLastRow() + 1;
-    allEntries.getRange(rowIdx, 1, 1, entry.length).setValues([entry]);
+    const month = entry[1];
+    let msh = ss.getSheetByName(month);
+    if (!msh) {
+      msh = ss.insertSheet(month);
+      msh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    }
+    const rowIdx = msh.getLastRow() + 1;
+    msh.getRange(rowIdx, 1, 1, entry.length).setValues([entry]);
+    msh.getRange(rowIdx, 17).setFormula('=ROUND((N' + rowIdx + '+P' + rowIdx + ')*0.18, 2)');
+    msh.getRange(rowIdx, 18).setFormula('=ROUND(O' + rowIdx + '+P' + rowIdx + '+Q' + rowIdx + ', 2)');
+    msh.getRange(rowIdx, 22).setFormula('=ROUND(O' + rowIdx + '*T' + rowIdx + ', 2)');
+    msh.getRange(rowIdx, 23).setFormula('=ROUND(V' + rowIdx + '+U' + rowIdx + ', 2)');
+  }
+
+  for (const sh of ss.getSheets()) {
+    const name = sh.getName();
+    if (name.includes('-')) {
+      const lastRow = sh.getLastRow();
+      const summaryRow = new Array(HEADERS.length).fill('');
+      summaryRow[0] = 'TOTAL';
+      summaryRow[3] = 'TOTAL';
+      summaryRow[13] = '=SUM(N2:N' + lastRow + ')';
+      summaryRow[14] = '=SUM(O2:O' + lastRow + ')';
+      summaryRow[22] = '=SUM(W2:W' + lastRow + ')';
+      const sIdx = lastRow + 1;
+      sh.getRange(sIdx, 1, 1, HEADERS.length).setValues([summaryRow]);
+      sh.getRange(sIdx, 14).setFormula(summaryRow[13]);
+      sh.getRange(sIdx, 15).setFormula(summaryRow[14]);
+      sh.getRange(sIdx, 23).setFormula(summaryRow[22]);
+    }
   }
 
   return ss;
@@ -656,7 +699,7 @@ console.log('Test 16: sendAutomatedMonthlyEmailReport — no admin emails...');
   lookup.getRange(2, 1, 1, 6).setValues([
     ['TK', 'Trupti Kodag', 'YES', '1111', 'SALES', ''] // No admin, no email
   ]);
-  ss.insertSheet('All Entries');
+  ss.insertSheet('OCT-2026');
 
   const sandbox = createSandbox(ss);
   vm.createContext(sandbox);

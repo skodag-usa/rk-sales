@@ -15,11 +15,22 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
 
 ## Architecture
 
-- Sheets: `Dashboard`, `Report`, `All Entries`, `Lookup`, plus one tab per month (e.g. `NOV-2026`). `CORE_SHEETS`.
-- `Lookup` columns A–F: `Code`, `Full Name`, `Active` (YES/NO), `PIN`, `Role` (ADMIN/SALES), `Email`. Auto-migrates 3- or 5-column legacy sheets.
-- `All Entries` schema is `HEADERS` in `Code.gs` (32 columns); `ID_COL = HEADERS.length` (Response ID). Column 29 is `Revisit` (YES/NO). Month tabs are created per month.
+- Sheets: `Dashboard`, `Report`, `Lookup`, plus one tab per month (e.g. `NOV-2026`). `CORE_SHEETS` (`All Entries` removed — data is saved strictly to month-specific tabs).
+- `Lookup` columns A–F: `Code`, `Full Name`, `Active` (YES/NO), `PIN`, `Role` (ADMIN/SALES), `Email`; columns H–I: `Region`, `Active` (YES/NO) defaulting to `R - Pune`, `N - Pune`, `MP`, `WB`. Auto-migrates legacy sheets.
+- Month tabs schema is `HEADERS` in `Code.gs` (32 columns); `ID_COL = HEADERS.length` (Response ID). Column 29 is `Revisit` (YES/NO). Month tabs are created per month with a live `TOTAL` summary row.
 - Fiscal year runs Apr–Mar (`FY_MONTHS`); quarters Q1=Apr–Jun … Q4=Jan–Mar. `CAL_MONTHS` is calendar order.
 - `SPREADSHEET_ID` is hardcoded; `getSS_()` prefers the active spreadsheet, else opens by ID from script properties.
+
+## Architecture knowledge
+
+- Before performing repository-wide analysis, consult `docs/architecture/` first (start at `docs/architecture/README.md`).
+- Reuse existing architecture knowledge from `docs/architecture/` before repeating full repository discovery.
+- Avoid repeating full repository discovery when a targeted question or existing doc answer suffices.
+- Architectural claims require targeted source-code verification with file/line references.
+- Document important business workflows and dependencies in `docs/architecture/`.
+- When implementation changes affect architecture, update the affected `docs/architecture/` file in the same change.
+- Record the last verified Git commit SHA in `docs/architecture/architecture-status.md`.
+- Never treat undocumented assumptions as facts; verify against source before acting.
 
 ## Auth & roles
 
@@ -38,10 +49,10 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
 ## Preview vs live
 
 - `Index.html`: `IS_LIVE_GAS = typeof google !== 'undefined' && google.script && google.script.run`.
-- Preview mode stores entries in `localStorage` (`rk_sales_multiyear_preview_v2`) and users in `rk_sales_preview_users_v3`; live mode calls `google.script.run`.
-- The app is offline-first: when live Apps Script is unreachable/offline, saves go to local storage and `rk_sales_pending_sync_v1`; the Sync button (and the browser `online` event) replays queued `saveEntry` calls, then refreshes Sheets.
+- Preview & offline modes use asynchronous `IndexedDB` (`RKSalesDB`) with fallback to `localStorage` (`rk_sales_multiyear_preview_v2`); live mode calls `google.script.run`.
+- The app is offline-first: when live Apps Script is unreachable or Force Offline Mode is enabled via `#offlineModeToggle`, saves queue in `IndexedDB` (store `pendingSync`); the Sync button (and the browser `online` event or toggling online) replays queued `saveEntry` calls.
 - PWA assets are served by `Code.gs` query routes `?pwa=manifest` and `?pwa=sw`; the manifest start URL is the deployed `/exec` URL. Deploy `Code.gs` and `Index.html` together; uninstall/reinstall an existing PWA after changing the start URL.
-- Offline login requires each user to have logged in successfully once online; cached credentials use `rk_sales_offline_auth_v1`.
+- Offline login requires each user to have logged in successfully once online; cached credentials use `IndexedDB` (`offlineAuth` store with `rk_sales_offline_auth_v1` fallback).
 
 ## Email reporting
 
@@ -66,4 +77,5 @@ Google Apps Script web app for sales entry, dashboard, and email reporting. Back
 
 ## Existing instruction sources
 
-- None present (no `AGENTS.md`/`CLAUDE.md`/`.cursor`). Implementation plans live in `docs/superpowers/plans/`.
+- `docs/architecture/` holds persistent architecture knowledge (`system-overview`, `business-flows`, `dependencies`, `api-contracts`, `technical-decisions`, `architecture-status`, index in `README`).
+- Implementation plans live in `docs/superpowers/plans/`.

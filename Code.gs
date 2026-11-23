@@ -10,7 +10,7 @@
  * The sheet stays private. The web app writes as the account that deploys it.
  *
  * Sheets used:
- *   Dashboard, Report, All Entries, Lookup, and one tab per month (NOV-2026).
+ *   Dashboard, Report, Lookup, and one tab per month (NOV-2026).
  * Lookup columns: A Code, B Full Name, C Active (YES/NO), D PIN, E Role (ADMIN/SALES), F Email.
  */
 
@@ -23,7 +23,7 @@ var QUARTERS = {
   Q3: ['OCT', 'NOV', 'DEC'],
   Q4: ['JAN', 'FEB', 'MAR']
 };
-var CORE_SHEETS = { Dashboard: true, Report: true, 'All Entries': true, Lookup: true };
+var CORE_SHEETS = { Dashboard: true, Report: true, Lookup: true };
 var DEFAULT_SALES_PERSONS = [
   ['RK', 'Rahul Kodag', 'YES', '1234', 'ADMIN', 'rahulkodag@example.com'],
   ['TK', 'Trupti Kodag', 'YES', '1111', 'SALES', ''],
@@ -31,6 +31,7 @@ var DEFAULT_SALES_PERSONS = [
   ['OT', 'Other', 'YES', '3333', 'SALES', ''],
   ['ADMIN', 'Administrator', 'YES', '9999', 'ADMIN', 'admin@example.com']
 ];
+var DEFAULT_REGIONS = ['R - Pune', 'N - Pune', 'MP', 'WB'];
 var HEADERS = [
   'Sr. No.', 'MONTH', 'Sales Person', 'Party Name', 'Region',
   'Po No.', 'Po Date', 'PI No.', 'PI Date', 'Invoice No.', 'Invoice Date',
@@ -40,20 +41,6 @@ var HEADERS = [
   'WB/Billing', 'Remark', 'Accounts Remark', 'Revisit', 'Edit Link', 'Timestamp', 'Response ID'
 ];
 var ID_COL = HEADERS.length;
-
-var KPI_FORMULAS = [
-  ["=COUNTA('All Entries'!A2:A)"],
-  ["=SUM('All Entries'!N2:N)"],
-  ["=SUM('All Entries'!O2:O)"],
-  ["=SUM('All Entries'!Q2:Q)"],
-  ["=SUM('All Entries'!R2:R)"],
-  ["=SUM('All Entries'!V2:V)"],
-  ["=SUM('All Entries'!W2:W)"],
-  ['=COUNTIFS(\'All Entries\'!A2:A,"<>",\'All Entries\'!Y2:Y,"<>RCD")'],
-  ['=SUMIFS(\'All Entries\'!R2:R,\'All Entries\'!A2:A,"<>",\'All Entries\'!Y2:Y,"<>RCD")'],
-  ['=SUMIFS(\'All Entries\'!R2:R,\'All Entries\'!A2:A,"<>",\'All Entries\'!Y2:Y,"=RCD")']
-];
-var LAST10_FORMULA = '=IFERROR(QUERY(\'All Entries\'!A1:Y,"select A,B,C,D,E,L,M,O,R,W,X,Y where A is not null order by A desc limit 10",1),"No transactions yet")';
 
 function doGet(e) {
   var pwaAsset = e && e.parameter ? String(e.parameter.pwa || '') : '';
@@ -85,29 +72,124 @@ function doGet(e) {
 
 function getServiceWorkerSource_() {
   return [
-    "const CACHE='rk-sales-pwa-v1';",
-    "const CDN=[",
-    " 'https://cdn.tailwindcss.com/3.4.17',",
-    " 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',",
-    " 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'",
+    "const CACHE = 'rk-sales-pwa-v2';",
+    "const STATIC_ASSETS = [",
+    "  'https://cdn.tailwindcss.com/3.4.17',",
+    "  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',",
+    "  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'",
     "];",
-    "self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(async c=>{",
-    " try{await c.addAll(CDN)}catch(_){ }",
-    " try{await c.add(location.href.replace(/[?&]pwa=sw/,'').replace(/[?&]$/,''))}catch(_){ }",
-    "}));self.skipWaiting()});",
-    "self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));",
-    "self.addEventListener('fetch',e=>{",
-    " if(e.request.method!=='GET')return;",
-    " e.respondWith(fetch(e.request).then(r=>{",
-    "  if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}",
-    "  return r;",
-    " }).catch(()=>caches.match(e.request).then(r=>r||caches.match('/'))));",
+    "",
+    "self.addEventListener('install', function (e) {",
+    "  e.waitUntil(",
+    "    caches.open(CACHE).then(async function (c) {",
+    "      try { await c.addAll(STATIC_ASSETS); } catch (_) {}",
+    "      try { await c.add(location.href.replace(/[?&]pwa=sw/, '').replace(/[?&]$/, '')); } catch (_) {}",
+    "    })",
+    "  );",
+    "  self.skipWaiting();",
+    "});",
+    "",
+    "self.addEventListener('activate', function (e) {",
+    "  e.waitUntil(",
+    "    caches.keys().then(function (keys) {",
+    "      return Promise.all(",
+    "        keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); })",
+    "      );",
+    "    }).then(function () {",
+    "      return self.clients.claim();",
+    "    })",
+    "  );",
+    "});",
+    "",
+    "function isStaticAsset(url) {",
+    "  return STATIC_ASSETS.some(function (cdn) { return url.startsWith(cdn); }) ||",
+    "    url.indexOf('fonts.gstatic.com') !== -1 ||",
+    "    url.indexOf('cdn.jsdelivr.net') !== -1 ||",
+    "    url.indexOf('cdn.tailwindcss.com') !== -1 ||",
+    "    /\\.(css|js|woff2?|ttf|png|jpe?g|gif|svg|ico)$/i.test(url);",
+    "}",
+    "",
+    "self.addEventListener('fetch', function (e) {",
+    "  if (e.request.method !== 'GET') return;",
+    "  var url = e.request.url;",
+    "",
+    "  // 1. Cache-first strategy for static assets",
+    "  if (isStaticAsset(url)) {",
+    "    e.respondWith(",
+    "      caches.match(e.request).then(function (cached) {",
+    "        if (cached) return cached;",
+    "        return fetch(e.request).then(function (res) {",
+    "          if (res && res.status === 200) {",
+    "            var copy = res.clone();",
+    "            caches.open(CACHE).then(function (c) { c.put(e.request, copy); });",
+    "          }",
+    "          return res;",
+    "        }).catch(function () { return caches.match(e.request); });",
+    "      })",
+    "    );",
+    "    return;",
+    "  }",
+    "",
+    "  // 2. Network-first strategy for data, document and navigation requests",
+    "  e.respondWith(",
+    "    fetch(e.request).then(function (res) {",
+    "      if (res && res.status === 200) {",
+    "        var copy = res.clone();",
+    "        caches.open(CACHE).then(function (c) { c.put(e.request, copy); });",
+    "      }",
+    "      return res;",
+    "    }).catch(function () {",
+    "      return caches.match(e.request).then(function (fallback) {",
+    "        return fallback || caches.match('/') || caches.match(location.href.replace(/[?&]pwa=sw/, '').replace(/[?&]$/, ''));",
+    "      });",
+    "    })",
+    "  );",
+    "});",
+    "",
+    "// 3. Message listener for background sync and skipWaiting",
+    "self.addEventListener('message', function (e) {",
+    "  if (!e.data) return;",
+    "  if (e.data.type === 'SKIP_WAITING') {",
+    "    self.skipWaiting();",
+    "  }",
+    "  if (e.data.type === 'SYNC_NOW' || e.data.type === 'BACKGROUND_SYNC') {",
+    "    e.waitUntil(",
+    "      self.clients.matchAll({ type: 'window' }).then(function (clients) {",
+    "        clients.forEach(function (client) {",
+    "          client.postMessage({ type: 'SYNC_TRIGGERED', timestamp: Date.now() });",
+    "        });",
+    "      })",
+    "    );",
+    "  }",
+    "});",
+    "",
+    "// Background Sync API support where available",
+    "self.addEventListener('sync', function (e) {",
+    "  if (e.tag === 'rk-sales-sync' || e.tag === 'pending-sync') {",
+    "    e.waitUntil(",
+    "      self.clients.matchAll({ type: 'window' }).then(function (clients) {",
+    "        clients.forEach(function (client) {",
+    "          client.postMessage({ type: 'SYNC_TRIGGERED', tag: e.tag });",
+    "        });",
+    "      })",
+    "    );",
+    "  }",
     "});"
   ].join('\n');
 }
 
 function bootJson_(editId) {
-  return JSON.stringify({ editId: sanitizeEditId_(editId) }).replace(/</g, '\\u003c');
+  var payload = { editId: sanitizeEditId_(editId) };
+  try {
+    var ss = getSS_();
+    if (ss) {
+      payload.salesPersons = getSalesPersonsLookup_(ss);
+      payload.regions = getRegionsLookup_(ss);
+    }
+  } catch (e) {
+    // Graceful fallback if spreadsheet is not immediately available during boot
+  }
+  return JSON.stringify(payload).replace(/</g, '\\u003c');
 }
 
 function onOpen() {
@@ -261,6 +343,59 @@ function getSalesPersonsLookup_(ss) {
 }
 
 /**
+ * Returns active regions from Lookup sheet (Columns H & I).
+ * Initializes Column H & I if not present.
+ */
+function getRegionsLookup_(ss) {
+  if (!ss) return DEFAULT_REGIONS.slice();
+  var sh = ss.getSheetByName('Lookup');
+  if (!sh) {
+    getSalesPersonsInternal_(ss);
+  getRegionsLookup_(ss);
+    sh = ss.getSheetByName('Lookup');
+  }
+  if (!sh) return DEFAULT_REGIONS.slice();
+
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+
+  var hasRegionHeader = false;
+  try {
+    if (lastCol >= 8) {
+      var hVal = String(sh.getRange(1, 8).getValue() || '').trim().toUpperCase();
+      hasRegionHeader = (hVal === 'REGION' || hVal === 'REGIONS');
+    }
+  } catch (e) {}
+
+  if (lastCol < 8 || !hasRegionHeader) {
+    sh.getRange(1, 8, 1, 2).setValues([['Region', 'Active']]).setFontWeight('bold').setBackground('#d9ead3');
+    var initRegs = DEFAULT_REGIONS.map(function (reg) { return [reg, 'YES']; });
+    sh.getRange(2, 8, initRegs.length, 2).setValues(initRegs);
+    try {
+      sh.getRange('I2:I50').setDataValidation(
+        SpreadsheetApp.newDataValidation().requireValueInList(['YES', 'NO'], true).build()
+      );
+    } catch (e) {}
+    return DEFAULT_REGIONS.slice();
+  }
+
+  var numRows = Math.max(1, lastRow - 1);
+  var vals = sh.getRange(2, 8, numRows, 2).getValues();
+  var list = [];
+  for (var i = 0; i < vals.length; i++) {
+    var reg = String(vals[i][0] || '').trim();
+    if (!reg) continue;
+    var activeVal = String(vals[i][1] === '' || vals[i][1] === null || vals[i][1] === undefined ? 'YES' : vals[i][1]).toUpperCase().trim();
+    var isActive = activeVal !== 'NO' && activeVal !== 'FALSE' && activeVal !== 'N' && activeVal !== '0';
+    if (isActive) {
+      list.push(reg);
+    }
+  }
+
+  return list.length ? list : DEFAULT_REGIONS.slice();
+}
+
+/**
  * Returns all active Admin emails from Lookup.
  */
 function getAdminEmails_(ss) {
@@ -381,15 +516,17 @@ function setupRKSalesSheets() {
 
   var dash = ss.getSheetByName('Dashboard') || (ss.getSheets().length > 0 ? ss.getSheets()[0].setName('Dashboard') : ss.insertSheet('Dashboard'));
   if (!ss.getSheetByName('Report')) ss.insertSheet('Report', 1);
-  var all = ss.getSheetByName('All Entries') || ss.insertSheet('All Entries', 2);
+  var oldAll = ss.getSheetByName('All Entries');
+  if (oldAll && typeof ss.deleteSheet === 'function') {
+    try { ss.deleteSheet(oldAll); } catch (e) {}
+  }
   getSalesPersonsInternal_(ss);
+  getRegionsLookup_(ss);
 
-  ensureDataSheetSchema_(all);
-  styleDataSheet_(all);
   var setupSheets = ss.getSheets();
   for (var si = 0; si < setupSheets.length; si++) {
     var setupSheet = setupSheets[si];
-    if (parseMonthTabKey_(setupSheet.getName()) !== null) {
+    if (parseMonthTabKey_(setupSheet.getName()) !== null || FY_MONTHS.indexOf(setupSheet.getName()) !== -1) {
       ensureDataSheetSchema_(setupSheet);
       styleDataSheet_(setupSheet);
       updateMonthSheetSummaryRow_(setupSheet);
@@ -417,7 +554,7 @@ function setupRKSalesSheets() {
     dash.getRange('A15:L15').setFontWeight('bold').setBackground('#d9ead3');
   }
 
-  if (String(dash.getRange('A3').getValue()) === 'Total entries') {
+  if (dash && String(dash.getRange('A3').getValue()) === 'Total entries') {
     dash.getRange('A3:A12').setValues([
       ['Total entries'],
       ['Total PO Value ₹'],
@@ -430,8 +567,7 @@ function setupRKSalesSheets() {
       ['Payment pending ₹'],
       ['Collected (RCD) ₹']
     ]);
-    dash.getRange('B3:B12').setFormulas(KPI_FORMULAS);
-    dash.getRange('A15').setFormula(LAST10_FORMULA);
+    updateDashboardSheet_(ss);
   }
 
   try {
@@ -521,14 +657,13 @@ function applyDataConditionalFormatting_(sh) {
 
 /**
  * Applies the cell-level conditional formatting rules consistently across
- * All Entries and all monthly (MMM-YYYY) tabs.
+ * all monthly (MMM-YYYY) tabs.
  */
 function applyFormattingToAllSheets() {
   var ss = getSS_();
-  var all = ss.getSheetByName('All Entries');
-  if (all) {
-    ensureDataSheetSchema_(all);
-    styleDataSheet_(all);
+  var oldAll = ss.getSheetByName('All Entries');
+  if (oldAll && typeof ss.deleteSheet === 'function') {
+    try { ss.deleteSheet(oldAll); } catch (e) {}
   }
   var sheets = ss.getSheets();
   for (var i = 0; i < sheets.length; i++) {
@@ -542,7 +677,7 @@ function applyFormattingToAllSheets() {
   try {
     SpreadsheetApp.getUi().alert(
       'Formatting Updated',
-      'Applied cell-level conditional formatting to All Entries and all monthly tabs successfully.',
+      'Applied cell-level conditional formatting to all monthly tabs successfully.',
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   } catch (e) {}
@@ -593,6 +728,48 @@ function getFYFromMonthYear_(mo, yr) {
   return 'FY ' + String(startY).slice(-2) + '-' + String(startY + 1).slice(-2);
 }
 
+function findEntryById_(ss, id, hintMonthYear) {
+  if (!ss || !id) return null;
+
+  var hint = String(hintMonthYear || '').toUpperCase().trim();
+  var targetHint = '';
+  if (hint && !CORE_SHEETS[hint]) {
+    if (parseMonthTabKey_(hint) !== null || FY_MONTHS.indexOf(hint) !== -1 || hint === 'All Entries') {
+      targetHint = hint;
+    } else {
+      var parsed = parseMonthYearFields_(hint);
+      if (parsed && parsed.monthYear && parseMonthTabKey_(parsed.monthYear) !== null) {
+        targetHint = parsed.monthYear;
+      }
+    }
+  }
+
+  if (targetHint) {
+    var hintSheet = ss.getSheetByName(targetHint);
+    if (hintSheet) {
+      var rowNum = findRow_(hintSheet, id);
+      if (rowNum > 0) {
+        return { sheet: hintSheet, sheetName: targetHint, rowNum: rowNum };
+      }
+    }
+  }
+
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    var name = sh.getName();
+    if (CORE_SHEETS[name]) continue;
+    if (targetHint && name === targetHint) continue;
+    if (parseMonthTabKey_(name) !== null || FY_MONTHS.indexOf(name) !== -1 || name === 'All Entries') {
+      var rNum = findRow_(sh, id);
+      if (rNum > 0) {
+        return { sheet: sh, sheetName: name, rowNum: rNum };
+      }
+    }
+  }
+  return null;
+}
+
 function saveEntry(payload) {
   if (!payload || typeof payload !== 'object') throw new Error('Missing entry.');
   var lock = LockService.getScriptLock();
@@ -602,10 +779,6 @@ function saveEntry(payload) {
     locked = true;
 
     var ss = getSS_();
-    var all = ss.getSheetByName('All Entries');
-    if (!all) all = ss.insertSheet('All Entries');
-    ensureDataSheetSchema_(all);
-    styleDataSheet_(all);
 
     var monthYear = normalizeMonthYear_(payload);
     var salesPerson = String(payload.salesPerson || '').trim();
@@ -651,19 +824,20 @@ function saveEntry(payload) {
       throw new Error('Invalid entry id.');
     }
     var id = sanitizeEditId_(requestedId);
-    var existingRow = id ? findRow_(all, id) : 0;
-    if (id && !existingRow) {
+    var hintMY = payload.originalMonthYear || payload.monthYear || '';
+    var existingEntry = id ? findEntryById_(ss, id, hintMY) : null;
+    if (id && !existingEntry) {
       throw new Error('Entry ' + id + ' was not found.');
     }
 
-    if (existingRow && authUser && authUser.role !== 'ADMIN') {
-      var existingRep = String(all.getRange(existingRow, 3).getValue() || '').trim().toUpperCase();
+    if (existingEntry && authUser && authUser.role !== 'ADMIN') {
+      var existingRep = String(existingEntry.sheet.getRange(existingEntry.rowNum, 3).getValue() || '').trim().toUpperCase();
       if (existingRep && existingRep !== authUser.code.toUpperCase()) {
         throw new Error('Permission denied: Regular sales persons can only edit their own entries.');
       }
     }
 
-    var sr = existingRow ? all.getRange(existingRow, 1).getValue() : nextSr_(all);
+    var sr = existingEntry ? existingEntry.sheet.getRange(existingEntry.rowNum, 1).getValue() : nextSr_(ss);
     if (!id) id = 'RK-' + new Date().getTime() + '-' + Math.floor(Math.random() * 10000);
 
     var webAppUrl = webAppUrl_();
@@ -704,101 +878,251 @@ function saveEntry(payload) {
       id
     ];
 
-    upsert_(all, existingRow, row);
-
+    // Remove from other month sheets if month was changed or relocated
     var sheets = ss.getSheets();
     for (var i = 0; i < sheets.length; i++) {
       var sh = sheets[i];
       var name = sh.getName();
       if (name === monthYear) continue;
-      if (parseMonthTabKey_(name) !== null || FY_MONTHS.indexOf(name) !== -1) {
+      if (parseMonthTabKey_(name) !== null || FY_MONTHS.indexOf(name) !== -1 || name === 'All Entries') {
         var oldRow = findRow_(sh, id);
         if (oldRow) {
           sh.deleteRow(oldRow);
-          updateMonthSheetSummaryRow_(sh);
+          if (parseMonthTabKey_(name) !== null || FY_MONTHS.indexOf(name) !== -1) {
+            updateMonthSheetSummaryRow_(sh);
+          }
         }
       }
     }
 
+    // Save only into the target month sheet
     var monthSheet = getMonthSheet_(ss, monthYear);
     removeMonthSheetSummaryRow_(monthSheet);
     var existingMonthRow = findRow_(monthSheet, id);
     upsert_(monthSheet, existingMonthRow, row);
     updateMonthSheetSummaryRow_(monthSheet);
+    updateDashboardSheet_(ss);
+    invalidateDashboardCache_(monthYear);
     SpreadsheetApp.flush();
 
     return {
       ok: true,
-      isEdit: !!existingRow,
+      isEdit: !!existingEntry,
       srNo: sr,
       responseId: id,
       monthYear: monthYear,
-      dashboard: buildDashboardData_(ss, all)
+      dashboard: buildDashboardData_(ss)
     };
   } finally {
     if (locked) lock.releaseLock();
   }
 }
 
-function getDashboardData() {
-  var ss = getSS_();
-  var all = ss.getSheetByName('All Entries');
-  return buildDashboardData_(ss, all);
+function updateDashboardSheet_(ss) {
+  var dash = ss ? ss.getSheetByName('Dashboard') : null;
+  if (!dash) return;
+  var data = buildDashboardData_(ss, { all: true });
+  var records = data.allEntries || [];
+  var totalPo = 0, totalSales = 0, totalGst = 0, totalVal = 0, totalCommVal = 0, totalComm = 0;
+  var pendingEntries = 0, pendingVal = 0, collectedVal = 0;
+  for (var i = 0; i < records.length; i++) {
+    var r = records[i];
+    totalPo += (r.poValue || 0);
+    totalSales += (r.productValue || 0);
+    totalGst += (r.gstValue || 0);
+    totalVal += (r.totalValue || 0);
+    totalCommVal += (r.commissionValuePct || 0);
+    totalComm += (r.totalCommission || 0);
+    if (r.paymentStatus === 'RCD') {
+      collectedVal += (r.totalValue || 0);
+    } else {
+      pendingEntries++;
+      pendingVal += (r.totalValue || 0);
+    }
+  }
+  dash.getRange('B3:B12').setValues([
+    [records.length],
+    [round2_(totalPo)],
+    [round2_(totalSales)],
+    [round2_(totalGst)],
+    [round2_(totalVal)],
+    [round2_(totalCommVal)],
+    [round2_(totalComm)],
+    [pendingEntries],
+    [round2_(pendingVal)],
+    [round2_(collectedVal)]
+  ]);
+  var last10Rows = [];
+  var l10 = data.last10 || [];
+  for (var j = 0; j < l10.length; j++) {
+    var t = l10[j];
+    last10Rows.push([
+      t.srNo, t.monthYear, t.salesPerson, t.partyName, t.region,
+      t.productKeyword, t.productName, t.productValue, t.totalValue,
+      t.totalCommission, t.paymentTerms, t.paymentStatus
+    ]);
+  }
+  if (dash.getLastRow() >= 16) {
+    var clearRng = dash.getRange(16, 1, Math.max(1, dash.getLastRow() - 15), 12);
+    if (typeof clearRng.clearContent === 'function') clearRng.clearContent();
+  }
+  if (last10Rows.length > 0) {
+    dash.getRange(16, 1, last10Rows.length, 12).setValues(last10Rows);
+  }
 }
 
-function buildDashboardData_(ss, all) {
-  var records = [];
-  if (all && all.getLastRow() >= 2) {
-    var vals = all.getRange(2, 1, all.getLastRow() - 1, HEADERS.length).getValues();
-    for (var i = 0; i < vals.length; i++) {
-      var r = vals[i];
-      if (!r[0] && !r[3]) continue;
-      var parsed = parseMonthYearFields_(r[1], r[6]);
-      records.push({
-        srNo: Number(r[0]) || (i + 1),
-        monthYear: parsed.monthYear,
-        month: parsed.month,
-        year: parsed.year,
-        salesPerson: String(r[2] || ''),
-        partyName: String(r[3] || ''),
-        region: String(r[4] || ''),
-        poNo: String(r[5] || ''),
-        poDate: fmtIsoDate_(r[6]),
-        piNo: String(r[7] || ''),
-        piDate: fmtIsoDate_(r[8]),
-        invoiceNo: String(r[9] || ''),
-        invoiceDate: fmtIsoDate_(r[10]),
-        productKeyword: String(r[11] || ''),
-        productName: String(r[12] || ''),
-        poValue: toNum_(r[13]),
-        productValue: toNum_(r[14]),
-        freightCharges: toNum_(r[15]),
-        gstValue: toNum_(r[16]),
-        totalValue: toNum_(r[17]),
-        commissionType: String(r[18] || ''),
-        commissionPct: round2_(toNum_(r[19]) * 100),
-        commissionFixed: toNum_(r[20]),
-        commissionValuePct: toNum_(r[21]),
-        totalCommission: toNum_(r[22]),
-        paymentTerms: String(r[23] || ''),
-        paymentStatus: String(r[24] || ''),
-        wbBilling: String(r[25] || ''),
-        remark: String(r[26] || ''),
-        accountsRemark: String(r[27] || ''),
-        revisit: (String(r[28] || '').toUpperCase() === 'YES' || r[28] === true),
-        timestamp: (r.length >= 32 ? r[30] : r[29]) instanceof Date ? Utilities.formatDate(r.length >= 32 ? r[30] : r[29], Session.getScriptTimeZone(), 'dd-MMM-yyyy HH:mm') : String((r.length >= 32 ? r[30] : r[29]) || ''),
-        responseId: String((r.length >= 32 ? r[31] : r[30]) || '')
-      });
+function getDashboardData(options) {
+  var ss = getSS_();
+  return getDashboardDataWithSS_(ss, options);
+}
+
+function getDashboardDataWithSS_(ss, options) {
+  options = options || {};
+  var isAll = options.all === true;
+  var targetFY = isAll ? 'ALL' : (options.fy || getCurrentFY_(ss));
+  var cacheKey = 'DASHBOARD_' + targetFY;
+
+  var cache = null;
+  try {
+    if (typeof CacheService !== 'undefined' && CacheService.getScriptCache) {
+      cache = CacheService.getScriptCache();
+    }
+  } catch (e) {}
+
+  if (cache && !options.skipCache) {
+    try {
+      var cached = cache.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {}
+  }
+
+  var data = buildDashboardData_(ss, { fy: targetFY, all: isAll });
+
+  if (cache) {
+    try {
+      var serialized = JSON.stringify(data);
+      if (serialized.length < 100000) {
+        cache.put(cacheKey, serialized, 600); // 10 minutes TTL
+      }
+    } catch (e) {}
+  }
+
+  return data;
+}
+
+function invalidateDashboardCache_(optFY) {
+  try {
+    if (typeof CacheService !== 'undefined' && CacheService.getScriptCache) {
+      var cache = CacheService.getScriptCache();
+      if (cache) {
+        var keys = ['DASHBOARD_ALL'];
+        if (optFY) keys.push('DASHBOARD_' + optFY);
+        var curFY = getCurrentFY_();
+        if (curFY) keys.push('DASHBOARD_' + curFY);
+        if (typeof cache.removeAll === 'function') {
+          cache.removeAll(keys);
+        } else if (typeof cache.remove === 'function') {
+          for (var k = 0; k < keys.length; k++) {
+            cache.remove(keys[k]);
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+function getCurrentFY_(ss) {
+  var now = new Date();
+  var mo = CAL_MONTHS[now.getMonth()];
+  var yr = now.getFullYear();
+  var curFY = getFYFromMonthYear_(mo, yr);
+
+  if (!ss || typeof ss.getSheets !== 'function') return curFY;
+
+  var sheets = ss.getSheets();
+  var curFYFound = false;
+  var latestKey = 0;
+  var latestFY = null;
+
+  for (var i = 0; i < sheets.length; i++) {
+    var name = sheets[i].getName();
+    if (CORE_SHEETS[name]) continue;
+    var key = parseMonthTabKey_(name);
+    if (key !== null) {
+      var m = name.toUpperCase().match(/^([A-Z]{3})-(\d{4})$/);
+      if (m) {
+        var sheetFY = getFYFromMonthYear_(m[1], m[2]);
+        if (sheetFY === curFY) curFYFound = true;
+        if (key > latestKey) {
+          latestKey = key;
+          latestFY = sheetFY;
+        }
+      }
     }
   }
 
-  var sorted = records.slice().sort(function (a, b) { return b.srNo - a.srNo; });
+  if (curFYFound || !latestFY) return curFY;
+  return latestFY;
+}
+
+function buildDashboardData_(ss, options) {
+  options = options || {};
+  var isAll = options.all === true;
+  var targetFY = isAll ? 'ALL' : (options.fy || getCurrentFY_(ss));
+  var records = getAllMonthRecords_(ss, isAll ? null : targetFY);
+
+  var totalPo = 0;
+  var totalSales = 0;
+  var totalGst = 0;
+  var totalVal = 0;
+  var totalCommVal = 0;
+  var totalComm = 0;
+  var pendingEntries = 0;
+  var pendingVal = 0;
+  var collectedVal = 0;
+
+  for (var i = 0; i < records.length; i++) {
+    var r = records[i];
+    totalPo += (r.poValue || 0);
+    totalSales += (r.productValue || 0);
+    totalGst += (r.gstValue || 0);
+    totalVal += (r.totalValue || 0);
+    totalCommVal += (r.commissionValuePct || 0);
+    totalComm += (r.totalCommission || 0);
+    if (r.paymentStatus === 'RCD') {
+      collectedVal += (r.totalValue || 0);
+    } else {
+      pendingEntries++;
+      pendingVal += (r.totalValue || 0);
+    }
+  }
+
+  var summary = {
+    orderCount: records.length,
+    totalPoValue: round2_(totalPo),
+    totalProductValue: round2_(totalSales),
+    totalGstValue: round2_(totalGst),
+    totalValue: round2_(totalVal),
+    totalCommissionValuePct: round2_(totalCommVal),
+    totalCommission: round2_(totalComm),
+    pendingCount: pendingEntries,
+    pendingValue: round2_(pendingVal),
+    collectedValue: round2_(collectedVal)
+  };
+
   return {
-    sheetUrl: ss.getUrl() || '',
+    sheetUrl: (ss && ss.getUrl) ? (ss.getUrl() || '') : '',
     salesPersons: getSalesPersonsLookup_(ss),
+    regions: getRegionsLookup_(ss),
     totalCount: records.length,
-    last10: sorted.slice(0, 10),
-    allEntries: sorted
+    last10: records.slice(0, 10),
+    allEntries: records,
+    summary: summary,
+    kpi: summary,
+    fy: targetFY,
+    isAll: isAll
   };
 }
 
@@ -1011,16 +1335,233 @@ function findRow_(sh, id) {
   return 0;
 }
 
-function nextSr_(sh) {
-  var last = sh.getLastRow();
-  if (last < 2) return 1;
-  var vals = sh.getRange(2, 1, last - 1, 1).getValues();
-  var max = 0;
-  for (var i = 0; i < vals.length; i++) {
-    var n = Number(vals[i][0]);
-    if (n > max) max = n;
+function nextSr_(target) {
+  var props = null;
+  try {
+    if (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties) {
+      props = PropertiesService.getScriptProperties();
+    }
+  } catch (e) {}
+
+  if (props) {
+    try {
+      var stored = props.getProperty('MAX_SR_NO');
+      if (stored !== null && stored !== undefined && /^\d+$/.test(String(stored).trim())) {
+        var currentMax = parseInt(String(stored).trim(), 10);
+        var nextVal = currentMax + 1;
+        props.setProperty('MAX_SR_NO', String(nextVal));
+        return nextVal;
+      }
+    } catch (e) {}
   }
-  return max + 1;
+
+  // If not set in PropertiesService, compute max across existing month sheets once
+  var ss = null;
+  if (!target) {
+    try { ss = getSS_(); } catch (e) {}
+  } else if (typeof target.getSheets === 'function') {
+    ss = target;
+  } else if (typeof target.getParent === 'function') {
+    ss = target.getParent();
+  }
+
+  var max = 0;
+  if (ss) {
+    var sheets = ss.getSheets();
+    for (var s = 0; s < sheets.length; s++) {
+      var sh = sheets[s];
+      var name = sh.getName();
+      if (CORE_SHEETS[name]) continue;
+      if (parseMonthTabKey_(name) !== null || FY_MONTHS.indexOf(name) !== -1 || name === 'All Entries') {
+        var last = sh.getLastRow();
+        if (last < 2) continue;
+        var vals = sh.getRange(2, 1, last - 1, 1).getValues();
+        for (var i = 0; i < vals.length; i++) {
+          var val = vals[i][0];
+          if (String(val).toUpperCase() === 'TOTAL') continue;
+          var n = Number(val);
+          if (!isNaN(n) && n > max) max = n;
+        }
+      }
+    }
+    var resVal = max + 1;
+    if (props) {
+      try { props.setProperty('MAX_SR_NO', String(resVal)); } catch (e) {}
+    }
+    return resVal;
+  }
+
+  // Fallback for single isolated sheet mock without getParent
+  if (target && typeof target.getLastRow === 'function') {
+    var lastRow = target.getLastRow();
+    if (lastRow < 2) {
+      if (props) { try { props.setProperty('MAX_SR_NO', '1'); } catch (e) {} }
+      return 1;
+    }
+    var rowVals = target.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var j = 0; j < rowVals.length; j++) {
+      var rowVal = rowVals[j][0];
+      if (String(rowVal).toUpperCase() === 'TOTAL') continue;
+      var num = Number(rowVal);
+      if (!isNaN(num) && num > max) max = num;
+    }
+    var resValSingle = max + 1;
+    if (props) {
+      try { props.setProperty('MAX_SR_NO', String(resValSingle)); } catch (e) {}
+    }
+    return resValSingle;
+  }
+
+  if (props) {
+    try { props.setProperty('MAX_SR_NO', '1'); } catch (e) {}
+  }
+  return 1;
+}
+
+function getAllMonthRecords_(ss, targetFY) {
+  var records = [];
+  if (!ss) return records;
+  var sheets = ss.getSheets();
+  var seenIds = {};
+
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var name = sh.getName();
+    if (CORE_SHEETS[name]) continue;
+    var tabKey = parseMonthTabKey_(name);
+    var isLegacyMonth = FY_MONTHS.indexOf(name) !== -1;
+
+    if (tabKey !== null || isLegacyMonth) {
+      if (targetFY && targetFY !== 'ALL' && tabKey !== null) {
+        var mMatch = name.toUpperCase().match(/^([A-Z]{3})-(\d{4})$/);
+        if (mMatch) {
+          var sFY = getFYFromMonthYear_(mMatch[1], mMatch[2]);
+          if (sFY !== targetFY) {
+            continue; // Skip month tabs not in target FY
+          }
+        }
+      }
+
+      var last = sh.getLastRow();
+      if (last < 2) continue;
+      var vals = sh.getRange(2, 1, last - 1, HEADERS.length).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        var r = vals[i];
+        if (!r[0] && !r[3]) continue;
+        if (String(r[0]).toUpperCase() === 'TOTAL' || String(r[3]).toUpperCase() === 'TOTAL') continue;
+        var respId = String((r.length >= 32 ? r[31] : r[30]) || '');
+        if (respId && seenIds[respId]) continue;
+        if (respId) seenIds[respId] = true;
+
+        var parsed = parseMonthYearFields_(r[1], r[6]);
+        var fy = getFYFromMonthYear_(parsed.month, parsed.year);
+        var qtr = getQuarterFromMonth_(parsed.month);
+
+        if (targetFY && targetFY !== 'ALL' && fy !== targetFY) {
+          continue;
+        }
+
+        records.push({
+          srNo: Number(r[0]) || (i + 1),
+          monthYear: parsed.monthYear,
+          month: parsed.month,
+          year: parsed.year,
+          quarter: qtr,
+          fy: fy,
+          salesPerson: String(r[2] || '').trim(),
+          partyName: String(r[3] || '').trim(),
+          region: String(r[4] || '').trim(),
+          poNo: String(r[5] || '').trim(),
+          poDate: fmtIsoDate_(r[6]),
+          piNo: String(r[7] || ''),
+          piDate: fmtIsoDate_(r[8]),
+          invoiceNo: String(r[9] || ''),
+          invoiceDate: fmtIsoDate_(r[10]),
+          productKeyword: String(r[11] || '').trim(),
+          productName: String(r[12] || '').trim(),
+          poValue: toNum_(r[13]),
+          productValue: toNum_(r[14]),
+          freightCharges: toNum_(r[15]),
+          gstValue: toNum_(r[16]),
+          totalValue: toNum_(r[17]),
+          commissionType: String(r[18] || ''),
+          commissionPct: round2_(toNum_(r[19]) * 100),
+          commissionFixed: toNum_(r[20]),
+          commissionValuePct: toNum_(r[21]),
+          totalCommission: toNum_(r[22]),
+          paymentTerms: String(r[23] || ''),
+          paymentStatus: String(r[24] || '').trim(),
+          wbBilling: String(r[25] || ''),
+          remark: String(r[26] || ''),
+          accountsRemark: String(r[27] || ''),
+          revisit: (String(r[28] || '').toUpperCase() === 'YES' || r[28] === true),
+          timestamp: (r.length >= 32 ? r[30] : r[29]) instanceof Date ? Utilities.formatDate(r.length >= 32 ? r[30] : r[29], Session.getScriptTimeZone(), 'dd-MMM-yyyy HH:mm') : String((r.length >= 32 ? r[30] : r[29]) || ''),
+          responseId: respId
+        });
+      }
+    }
+  }
+
+  // Fallback: If no records found in month sheets, check for legacy All Entries tab
+  if (records.length === 0 && (!targetFY || targetFY === 'ALL')) {
+    var all = ss.getSheetByName('All Entries');
+    if (all && all.getLastRow() >= 2) {
+      var allVals = all.getRange(2, 1, all.getLastRow() - 1, HEADERS.length).getValues();
+      for (var j = 0; j < allVals.length; j++) {
+        var ar = allVals[j];
+        if (!ar[0] && !ar[3]) continue;
+        if (String(ar[0]).toUpperCase() === 'TOTAL' || String(ar[3]).toUpperCase() === 'TOTAL') continue;
+        var aRespId = String((ar.length >= 32 ? ar[31] : ar[30]) || '');
+        if (aRespId && seenIds[aRespId]) continue;
+        if (aRespId) seenIds[aRespId] = true;
+
+        var aParsed = parseMonthYearFields_(ar[1], ar[6]);
+        var aFy = getFYFromMonthYear_(aParsed.month, aParsed.year);
+        var aQtr = getQuarterFromMonth_(aParsed.month);
+
+        records.push({
+          srNo: Number(ar[0]) || (j + 1),
+          monthYear: aParsed.monthYear,
+          month: aParsed.month,
+          year: aParsed.year,
+          quarter: aQtr,
+          fy: aFy,
+          salesPerson: String(ar[2] || '').trim(),
+          partyName: String(ar[3] || '').trim(),
+          region: String(ar[4] || '').trim(),
+          poNo: String(ar[5] || '').trim(),
+          poDate: fmtIsoDate_(ar[6]),
+          piNo: String(ar[7] || ''),
+          piDate: fmtIsoDate_(ar[8]),
+          invoiceNo: String(ar[9] || ''),
+          invoiceDate: fmtIsoDate_(ar[10]),
+          productKeyword: String(ar[11] || '').trim(),
+          productName: String(ar[12] || '').trim(),
+          poValue: toNum_(ar[13]),
+          productValue: toNum_(ar[14]),
+          freightCharges: toNum_(ar[15]),
+          gstValue: toNum_(ar[16]),
+          totalValue: toNum_(ar[17]),
+          commissionType: String(ar[18] || ''),
+          commissionPct: round2_(toNum_(ar[19]) * 100),
+          commissionFixed: toNum_(ar[20]),
+          commissionValuePct: toNum_(ar[21]),
+          totalCommission: toNum_(ar[22]),
+          paymentTerms: String(ar[23] || ''),
+          paymentStatus: String(ar[24] || '').trim(),
+          wbBilling: String(ar[25] || ''),
+          remark: String(ar[26] || ''),
+          accountsRemark: String(ar[27] || ''),
+          revisit: (String(ar[28] || '').toUpperCase() === 'YES' || ar[28] === true),
+          timestamp: (ar.length >= 32 ? ar[30] : ar[29]) instanceof Date ? Utilities.formatDate(ar.length >= 32 ? ar[30] : ar[29], Session.getScriptTimeZone(), 'dd-MMM-yyyy HH:mm') : String((ar.length >= 32 ? ar[30] : ar[29]) || ''),
+          responseId: aRespId
+        });
+      }
+    }
+  }
+
+  records.sort(function (a, b) { return b.srNo - a.srNo; });
+  return records;
 }
 
 function sanitizeEditId_(raw) {
@@ -1075,42 +1616,8 @@ function fmtINRCompact_(n) {
  */
 function generateReportData_(ss, filters) {
   filters = filters || {};
-  var allSh = ss.getSheetByName('All Entries');
-  var records = [];
+  var records = getAllMonthRecords_(ss);
   var reps = getSalesPersonsLookup_(ss);
-
-  if (allSh && allSh.getLastRow() >= 2) {
-    var rawVals = allSh.getRange(2, 1, allSh.getLastRow() - 1, HEADERS.length).getValues();
-    for (var i = 0; i < rawVals.length; i++) {
-      var r = rawVals[i];
-      if (!r[0] && !r[3]) continue;
-      var parsed = parseMonthYearFields_(r[1], r[6]);
-      var fy = getFYFromMonthYear_(parsed.month, parsed.year);
-      var qtr = getQuarterFromMonth_(parsed.month);
-
-      records.push({
-        srNo: Number(r[0]) || (i + 1),
-        monthYear: parsed.monthYear,
-        month: parsed.month,
-        year: parsed.year,
-        quarter: qtr,
-        fy: fy,
-        salesPerson: String(r[2] || '').trim(),
-        partyName: String(r[3] || '').trim(),
-        region: String(r[4] || '').trim(),
-        poNo: String(r[5] || '').trim(),
-        productKeyword: String(r[11] || '').trim(),
-        productName: String(r[12] || '').trim(),
-        poValue: toNum_(r[13]),
-        productValue: toNum_(r[14]),
-        freightCharges: toNum_(r[15]),
-        gstValue: toNum_(r[16]),
-        totalValue: toNum_(r[17]),
-        totalCommission: toNum_(r[22]),
-        paymentStatus: String(r[24] || '').trim()
-      });
-    }
-  }
 
   // Filter conditions
   var periodType = String(filters.periodType || 'MONTH').toUpperCase();
@@ -1613,33 +2120,13 @@ function sendEmailReport(payload) {
 }
 
 /**
- * Ensures a month sheet exists and is populated with data if available from All Entries.
+ * Ensures a month sheet exists.
  */
 function ensureMonthSheetData_(ss, monthYear) {
   if (!ss || !monthYear) return null;
   var sh = ss.getSheetByName(monthYear);
   if (!sh) {
     sh = getMonthSheet_(ss, monthYear);
-  }
-  if (sh && sh.getLastRow() < 2) {
-    var all = ss.getSheetByName('All Entries');
-    if (all && all.getLastRow() >= 2) {
-      var vals = all.getRange(2, 1, all.getLastRow() - 1, HEADERS.length).getValues();
-      var monthRows = [];
-      for (var i = 0; i < vals.length; i++) {
-        var r = vals[i];
-        var rowMY = String(r[1] || '').toUpperCase().trim();
-        if (rowMY === monthYear.toUpperCase().trim()) {
-          monthRows.push(r);
-        }
-      }
-      if (monthRows.length > 0) {
-        for (var mi = 0; mi < monthRows.length; mi++) {
-          upsert_(sh, mi + 2, monthRows[mi]);
-        }
-        updateMonthSheetSummaryRow_(sh);
-      }
-    }
   }
   return sh;
 }

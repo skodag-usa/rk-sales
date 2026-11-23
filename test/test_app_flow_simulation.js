@@ -116,7 +116,7 @@ const domSandbox = {
 };
 
 const pillDefs = {
-  regionPills: ['Pune', 'Aurangabad', 'Nagpur', 'Kolhapur', 'Nashik', '__OTHER__'],
+  regionPills: ['R - Pune', 'N - Pune', 'MP', 'WB', '__OTHER__'],
   commTypePills: ['P', 'F', 'P + F'],
   commPctPills: ['5', '4', '3', '2.5', '2', '1.5', '1', '0', '__OTHER__'],
   termsPills: ['PI', 'CR', 'PDC', '__OTHER__'],
@@ -340,6 +340,40 @@ getEl('emailYearSelect').value = '2026';
 getEl('emailPeriodPills').dispatchEvent({ type: 'click', target: getEl('emailPeriodPills').children[0] });
 assert.strictEqual(getEl('emailPreviewOrders').textContent, 2, 'Email preview should show 2 November orders');
 console.log('✓ Admin features and Email Report preview verified.');
+
+  // ==========================================
+  // TEST STEP 7: OFFLINE MODE TOGGLE & FORCE OFFLINE BANNER
+  // ==========================================
+  console.log('Step 7: Testing Offline Mode Toggle & Force Offline banner...');
+  assert.strictEqual(app.state.forceOffline, false, 'Default forceOffline must be false');
+
+  // Toggle Offline Mode
+  getEl('offlineModeToggle').click();
+  assert.strictEqual(app.state.forceOffline, true, 'forceOffline must become true after toggle click');
+  assert.strictEqual(getEl('forceOfflineBanner').classList.contains('hidden'), false, 'forceOfflineBanner must be visible');
+
+  // Submit an entry while manual offline mode is active
+  getEl('resetFormBtn').click();
+  getEl('partyName').value = 'Offline Client Ltd';
+  getEl('month').value = 'NOV';
+  getEl('year').value = '2026';
+  getEl('poDate').value = '2026-11-20';
+  getEl('poValue').value = '75000';
+  getEl('poValue').dispatchEvent({ type: 'input' });
+  getEl('salesForm').dispatchEvent({ type: 'submit' });
+  await new Promise(r => setTimeout(r, 50));
+
+  // Verify entry was added to state and pending sync queue
+  const latestEntry = app.state.allEntries[0];
+  assert.strictEqual(latestEntry.partyName, 'Offline Client Ltd');
+  assert.strictEqual(app.state.pendingCount >= 1, true, 'Pending sync count must be at least 1');
+  assert.strictEqual(getEl('syncBadge').classList.contains('hidden'), false, 'syncBadge must be visible when changes pending');
+
+  // Toggle back to Online
+  getEl('disableForceOfflineBtn').click();
+  assert.strictEqual(app.state.forceOffline, false, 'forceOffline must return to false');
+  assert.strictEqual(getEl('forceOfflineBanner').classList.contains('hidden'), true, 'forceOfflineBanner must be hidden');
+  console.log('✓ Offline Mode toggle, forced offline banner, and offline queueing verified.');
 
   console.log('\n======================================================');
   console.log('ALL APP FLOW SIMULATION TESTS PASSED SUCCESSFULLY 100%!');

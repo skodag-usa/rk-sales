@@ -122,6 +122,10 @@ class MockSpreadsheet {
 
 const mockSS = new MockSpreadsheet();
 
+const scriptPropsStore = { SS_ID: 'mock-id' };
+const scriptCacheStore = {};
+const cacheTtlStore = {};
+
 const sandbox = {
   SpreadsheetApp: {
     getActiveSpreadsheet: () => mockSS,
@@ -142,8 +146,16 @@ const sandbox = {
   },
   PropertiesService: {
     getScriptProperties: () => ({
-      getProperty: () => 'mock-id',
-      setProperty: () => {}
+      getProperty: (k) => scriptPropsStore[k] !== undefined ? scriptPropsStore[k] : null,
+      setProperty: (k, v) => { scriptPropsStore[k] = String(v); }
+    })
+  },
+  CacheService: {
+    getScriptCache: () => ({
+      get: (k) => scriptCacheStore[k] || null,
+      put: (k, v, ttl) => { scriptCacheStore[k] = String(v); cacheTtlStore[k] = ttl; },
+      remove: (k) => { delete scriptCacheStore[k]; delete cacheTtlStore[k]; },
+      removeAll: (keys) => { keys.forEach(k => { delete scriptCacheStore[k]; delete cacheTtlStore[k]; }); }
     })
   },
   LockService: {
@@ -393,7 +405,7 @@ class MockConditionalFormatRuleBuilder {
 }
 
 sandbox.SpreadsheetApp.newConditionalFormatRule = () => new MockConditionalFormatRuleBuilder();
-const testSheet = mockSS.getSheetByName('All Entries') || mockSS.insertSheet('All Entries');
+const testSheet = mockSS.getSheetByName('NOV-2026') || mockSS.insertSheet('NOV-2026');
 testSheet.setConditionalFormatRules = (r) => { appliedRules.push(...r); };
 
 sandbox.applyDataConditionalFormatting_(testSheet);
@@ -474,8 +486,8 @@ assert.ok(String(summaryRow[14]).includes('=SUM(O2:O'), 'Col 15 (Product Value) 
 assert.ok(String(summaryRow[22]).includes('=SUM(W2:W'), 'Col 23 (Total Commission) should have SUM formula: ' + summaryRow[22]);
 console.log('✓ Month sheet summary row with Total PO, Product Value, and Total Commission verified.');
 
-// Test 12: Rigorous verification of saveEntry saving to BOTH All Entries AND month sheet
-console.log('Test 12: Verifying data gets saved to BOTH All Entries and Month Sheet...');
+// Test 12: Rigorous verification of saveEntry saving ONLY to Month Sheet and NOT All Entries
+console.log('Test 12: Verifying data gets saved ONLY to Month Sheet (DEC-2026) and NOT All Entries...');
 const testPayloadA = {
   authCode: 'RK',
   authPin: '1234',
@@ -499,18 +511,10 @@ const resA = sandbox.saveEntry(testPayloadA);
 assert.strictEqual(resA.ok, true);
 const allSh = mockSS.getSheetByName('All Entries');
 const decSh = mockSS.getSheetByName('DEC-2026');
-assert.ok(allSh, 'All Entries sheet must exist');
+assert.strictEqual(allSh, null, 'All Entries sheet must NOT exist or be created');
 assert.ok(decSh, 'DEC-2026 month sheet must exist');
 
-// 1. Check entry exists in All Entries
-const allRowA = allSh.data.find(r => r && r[31] === resA.responseId);
-assert.ok(allRowA, 'Entry must be saved into All Entries');
-assert.strictEqual(allRowA[1], 'DEC-2026', 'All Entries monthYear must be DEC-2026');
-assert.strictEqual(allRowA[3], 'Precision Tech Works', 'All Entries party must match');
-assert.strictEqual(allRowA[5], 'PO-DEC-001', 'All Entries PO must match');
-assert.strictEqual(allRowA[13], 51000, 'All Entries PO Value must match');
-
-// 2. Check entry exists in DEC-2026 month sheet
+// 1. Check entry exists in DEC-2026 month sheet
 const decRowA = decSh.data.find(r => r && r[31] === resA.responseId);
 assert.ok(decRowA, 'Entry must be saved into DEC-2026 month sheet');
 assert.strictEqual(decRowA[1], 'DEC-2026', 'DEC-2026 month sheet monthYear must match');
@@ -518,11 +522,11 @@ assert.strictEqual(decRowA[3], 'Precision Tech Works', 'DEC-2026 month sheet par
 assert.strictEqual(decRowA[5], 'PO-DEC-001', 'DEC-2026 month sheet PO must match');
 assert.strictEqual(decRowA[13], 51000, 'DEC-2026 month sheet PO Value must match');
 
-// 3. Verify DEC-2026 ends with a TOTAL summary row
+// 2. Verify DEC-2026 ends with a TOTAL summary row
 const decLastIdx = decSh.data.length - 1;
 assert.strictEqual(decSh.data[decLastIdx][0], 'TOTAL', 'Last row in DEC-2026 must be TOTAL');
 
-// 4. Edit entry to update party name and verify BOTH sheets reflect edit
+// 3. Edit entry to update party name and verify month sheet reflects edit while All Entries remains absent
 const editRes = sandbox.saveEntry({
   authCode: 'RK',
   authPin: '1234',
@@ -545,13 +549,161 @@ const editRes = sandbox.saveEntry({
 assert.strictEqual(editRes.ok, true);
 assert.strictEqual(editRes.isEdit, true);
 
-const allRowEdited = allSh.data.find(r => r && r[31] === resA.responseId);
+assert.strictEqual(mockSS.getSheetByName('All Entries'), null, 'All Entries must remain absent after edit');
 const decRowEdited = decSh.data.find(r => r && r[31] === resA.responseId);
-assert.strictEqual(allRowEdited[3], 'Precision Tech Works (Renamed)', 'All Entries must have updated party');
 assert.strictEqual(decRowEdited[3], 'Precision Tech Works (Renamed)', 'DEC-2026 must have updated party');
-assert.strictEqual(allRowEdited[13], 61000, 'All Entries must have updated PO value');
 assert.strictEqual(decRowEdited[13], 61000, 'DEC-2026 must have updated PO value');
-console.log('✓ Verified: Data is actively and accurately saved into BOTH All Entries and month sheets!');
+console.log('✓ Verified: Data is saved strictly into month sheet (DEC-2026) and All Entries does NOT exist!');
+
+// Test 13: O(1) nextSr_ using MAX_SR_NO in PropertiesService
+console.log('Test 13: O(1) nextSr_ verification with PropertiesService...');
+scriptPropsStore['MAX_SR_NO'] = '50';
+const srNext1 = sandbox.nextSr_(mockSS);
+assert.strictEqual(srNext1, 51, 'nextSr_ must return 51 when MAX_SR_NO is 50');
+assert.strictEqual(scriptPropsStore['MAX_SR_NO'], '51', 'MAX_SR_NO must be updated to 51');
+
+const srNext2 = sandbox.nextSr_(mockSS);
+assert.strictEqual(srNext2, 52, 'nextSr_ must return 52 on next call');
+assert.strictEqual(scriptPropsStore['MAX_SR_NO'], '52', 'MAX_SR_NO must be updated to 52');
+
+// Test fallback when MAX_SR_NO is unset
+delete scriptPropsStore['MAX_SR_NO'];
+const computedSr = sandbox.nextSr_(mockSS);
+assert.ok(computedSr > 0, 'Computed nextSr_ must be positive');
+assert.strictEqual(scriptPropsStore['MAX_SR_NO'], String(computedSr), 'Computed Sr must be persisted to PropertiesService');
+console.log('✓ O(1) nextSr_ with PropertiesService verified.');
+
+// Test 14: Tab-hinted findEntryById_
+console.log('Test 14: Tab-hinted findEntryById_ verification...');
+const decEntryId = resA.responseId;
+// Hint provided and matches
+const hintedFind = sandbox.findEntryById_(mockSS, decEntryId, 'DEC-2026');
+assert.ok(hintedFind, 'Should find entry with correct tab hint');
+assert.strictEqual(hintedFind.sheetName, 'DEC-2026');
+assert.strictEqual(hintedFind.rowNum, 2);
+
+// Hint provided with different casing / formatting
+const hintedFindCase = sandbox.findEntryById_(mockSS, decEntryId, 'dec-2026');
+assert.ok(hintedFindCase, 'Should find entry with lowercase hint');
+assert.strictEqual(hintedFindCase.sheetName, 'DEC-2026');
+
+// Hint wrong but entry exists in another tab (fallback scan)
+const fallbackFind = sandbox.findEntryById_(mockSS, decEntryId, 'NOV-2026');
+assert.ok(fallbackFind, 'Should fall back to scanning all tabs when hint is wrong');
+assert.strictEqual(fallbackFind.sheetName, 'DEC-2026');
+
+// Non-existent ID
+const missingFind = sandbox.findEntryById_(mockSS, 'RK-NON-EXISTENT', 'DEC-2026');
+assert.strictEqual(missingFind, null, 'Non-existent ID should return null');
+console.log('✓ Tab-hinted findEntryById_ verified.');
+
+// Test 15: Windowed and pre-calculated getDashboardData with CacheService
+console.log('Test 15: Windowed & pre-calculated getDashboardData with CacheService...');
+// Clear cache before test
+Object.keys(scriptCacheStore).forEach(k => delete scriptCacheStore[k]);
+
+// Request specific FY
+const fyData = sandbox.getDashboardData({ fy: 'FY 26-27', all: false });
+assert.ok(fyData, 'Dashboard data should be returned');
+assert.ok(Array.isArray(fyData.allEntries), 'allEntries should be an array');
+assert.strictEqual(fyData.fy, 'FY 26-27');
+assert.ok(fyData.summary, 'Summary object must exist');
+assert.ok(fyData.summary.orderCount >= 1, 'Summary orderCount should reflect entries');
+assert.ok(fyData.summary.totalPoValue >= 0, 'Summary totalPoValue should be calculated');
+assert.ok(fyData.kpi, 'KPI object must exist');
+
+// Verify CacheService cached the result
+assert.ok(scriptCacheStore['DASHBOARD_FY 26-27'], 'CacheService must store DASHBOARD_FY 26-27');
+assert.strictEqual(cacheTtlStore['DASHBOARD_FY 26-27'], 600, 'Cache TTL must be 600s');
+
+// Second call should return cached data
+const cachedCall = sandbox.getDashboardData({ fy: 'FY 26-27' });
+assert.deepStrictEqual(cachedCall, fyData, 'Cached call should return identical data');
+
+// Request all years
+const allData = sandbox.getDashboardData({ all: true });
+assert.ok(allData, 'All years data should be returned');
+assert.strictEqual(allData.isAll, true);
+assert.ok(scriptCacheStore['DASHBOARD_ALL'], 'CacheService must store DASHBOARD_ALL');
+console.log('✓ Windowed and pre-calculated getDashboardData with CacheService verified.');
+
+// Test 16: saveEntry cache invalidation
+console.log('Test 16: saveEntry CacheService invalidation verification...');
+assert.ok(scriptCacheStore['DASHBOARD_ALL'], 'Cache should exist before saveEntry');
+sandbox.saveEntry({
+  authCode: 'RK',
+  authPin: '1234',
+  monthYear: 'DEC-2026',
+  salesPerson: 'RK',
+  partyName: 'Cache Invalidation Corp',
+  region: 'Pune',
+  poNo: 'PO-CACHE-01',
+  poDate: '2026-12-10',
+  productKeyword: 'LS',
+  productValue: 15000,
+  freightCharges: 500,
+  poValue: 15500,
+  commissionType: 'P',
+  commissionPct: 5,
+  wbBilling: 'B'
+});
+assert.strictEqual(scriptCacheStore['DASHBOARD_ALL'], undefined, 'DASHBOARD_ALL cache must be invalidated on saveEntry');
+assert.strictEqual(scriptCacheStore['DASHBOARD_FY 26-27'], undefined, 'DASHBOARD_FY 26-27 cache must be invalidated on saveEntry');
+console.log('✓ saveEntry cache invalidation verified.');
+
+// Test 17: Service worker script generation
+console.log('Test 17: Service worker script generation...');
+const swSource = sandbox.getServiceWorkerSource_();
+assert.ok(swSource.includes('isStaticAsset'), 'SW must have static asset detection');
+assert.ok(swSource.includes('caches.match(e.request)'), 'SW must have cache-first match for static assets');
+assert.ok(swSource.includes('fetch(e.request)'), 'SW must have network-first for data');
+assert.ok(swSource.includes("'message'"), 'SW must have message listener');
+assert.ok(swSource.includes('SYNC_NOW') || swSource.includes('BACKGROUND_SYNC'), 'SW must handle sync messages');
+assert.ok(swSource.includes('SKIP_WAITING'), 'SW must handle SKIP_WAITING message');
+assert.ok(swSource.includes("'sync'"), 'SW must handle sync event');
+
+// Verify service worker syntax
+try {
+  new vm.Script(swSource);
+  console.log('✓ Service worker script compiled with zero syntax errors.');
+} catch (swErr) {
+  assert.fail('Service worker script has syntax error: ' + swErr.message);
+}
+
+// Test 18: bootJson_ includes pre-seeded salesPersons & regions
+console.log('Test 18: bootJson_ pre-seeds salesPersons & regions...');
+const bootStr = sandbox.bootJson_('RK-TEST-123');
+const bootData = JSON.parse(bootStr);
+assert.strictEqual(bootData.editId, 'RK-TEST-123');
+assert.ok(Array.isArray(bootData.salesPersons), 'bootJson_ must include salesPersons array');
+assert.ok(bootData.salesPersons.some(u => u.code === 'RK'), 'salesPersons must include active users');
+assert.ok(Array.isArray(bootData.regions), 'bootJson_ must include regions array');
+assert.deepStrictEqual(bootData.regions, ['R - Pune', 'N - Pune', 'MP', 'WB'], 'bootJson_ must include default regions');
+console.log('✓ bootJson_ pre-seeds salesPersons & regions verified.');
+
+// Test 19: getRegionsLookup_ Lookup tab initialization & custom regions
+console.log('Test 19: getRegionsLookup_ Lookup sheet integration & custom regions...');
+const lookupSh = mockSS.getSheetByName('Lookup');
+assert.strictEqual(lookupSh.getRange(1, 8).getValue(), 'Region', 'Column H header must be Region');
+assert.strictEqual(lookupSh.getRange(1, 9).getValue(), 'Active', 'Column I header must be Active');
+
+const regs = sandbox.getRegionsLookup_(mockSS);
+assert.strictEqual(JSON.stringify(regs), JSON.stringify(['R - Pune', 'N - Pune', 'MP', 'WB']), 'Initial regions must match DEFAULT_REGIONS');
+
+// Test adding a custom region in Lookup sheet
+lookupSh.getRange(6, 8, 1, 2).setValues([['Goa', 'YES']]);
+const updatedRegs = sandbox.getRegionsLookup_(mockSS);
+assert.ok(updatedRegs.includes('Goa'), 'Added region Goa must be returned');
+
+// Test marking a region inactive
+lookupSh.getRange(6, 8, 1, 2).setValues([['Goa', 'NO']]);
+const activeRegsAfterDeactivation = sandbox.getRegionsLookup_(mockSS);
+assert.ok(!activeRegsAfterDeactivation.includes('Goa'), 'Inactive region Goa must not be returned');
+
+// Verify getDashboardData includes regions
+const dashPayload = sandbox.getDashboardData();
+assert.ok(Array.isArray(dashPayload.regions), 'getDashboardData must include regions');
+console.log('✓ getRegionsLookup_ Lookup sheet integration & custom regions verified.');
 
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');

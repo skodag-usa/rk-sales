@@ -10,6 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="?pwa=manifest" />
+  <link rel="manifest"
+    href="data:application/manifest+json,%7B%22name%22%3A%22RK%20Sales%22%2C%22short_name%22%3A%22RK%20Sales%22%2C%22display%22%3A%22standalone%22%2C%22start_url%22%3A%22.%22%2C%22theme_color%22%3A%22%230f172a%22%2C%22background_color%22%3A%22%23f1f5f9%22%7D" />
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -71,6 +73,15 @@
         <p id="modeSubtitle" class="text-[11px] text-slate-300">Connecting...</p>
       </div>
       <div class="flex items-center gap-1.5">
+        <span id="syncBadge"
+          class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-amber-950 flex items-center gap-1 shadow-sm">
+          <span id="syncCountBadge">0</span> pending
+        </span>
+        <button id="offlineModeToggle" type="button" title="Toggle Manual Offline Mode"
+          class="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 bg-emerald-950/80 text-emerald-300 border border-emerald-600/50 hover:bg-emerald-900/80">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="offlineToggleText">Online</span>
+        </button>
         <button id="installPwaBtn" type="button" title="Install RK Sales app"
           class="hidden px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white active:scale-95 transition">
           Install App
@@ -99,12 +110,18 @@
         <div class="flex items-center gap-2.5 shrink-0">
           <button id="backupDataBtn" type="button" title="Backup Master Sheet to Google Drive"
             class="hidden px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm transition">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
             Backup
           </button>
           <button id="openEmailReportBtn" type="button"
             class="hidden px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm transition">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
             Email Report
           </button>
           <button id="openChangePinBtn" type="button"
@@ -119,6 +136,22 @@
       </div>
     </div>
   </header>
+
+  <!-- Force Offline Banner -->
+  <div id="forceOfflineBanner" class="hidden bg-amber-500 text-slate-950 border-b border-amber-600 shadow-sm">
+    <div class="max-w-2xl mx-auto px-4 py-2 flex items-center justify-between gap-2 text-xs font-semibold">
+      <span class="flex items-center gap-1.5">
+        <svg class="w-4 h-4 shrink-0 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+        <span>Manual Offline Mode Active — changes stored locally</span>
+      </span>
+      <button id="disableForceOfflineBtn" type="button"
+        class="px-2.5 py-1 rounded-md bg-slate-900 text-amber-300 text-[11px] font-bold hover:bg-slate-800 transition shadow-sm">
+        Go Online
+      </button>
+    </div>
+  </div>
 
   <!-- Preview Mode Notice (auto-hidden when deployed in Google Apps Script) -->
   <div id="previewBanner" class="hidden bg-amber-50 border-b border-amber-200">
@@ -137,11 +170,11 @@
       <div id="editBanner"
         class="hidden rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2.5 flex items-center justify-between gap-2">
         <div class="text-xs text-blue-900">
-           <span class="inline-flex items-center gap-1.5 font-bold" id="editBannerTitle">
-             <span class="px-2 py-0.5 rounded-md bg-blue-800 text-white">#1</span>
-             <span>Editing Entry</span>
-           </span>
-          <span class="block text-blue-700">Changes update All Entries and move the monthly tab if Month/Year
+          <span class="inline-flex items-center gap-1.5 font-bold" id="editBannerTitle">
+            <span class="px-2 py-0.5 rounded-md bg-blue-800 text-white">#1</span>
+            <span>Editing Entry</span>
+          </span>
+          <span class="block text-blue-700">Changes update the month tab (and move the entry if Month/Year
             changes.</span>
         </div>
         <button id="cancelEditBtn" type="button"
@@ -211,14 +244,16 @@
 
           <div>
             <label for="partyName" class="block text-xs font-semibold text-slate-700 mb-1">Party Name *</label>
-            <input id="partyName" type="text" list="partyList" required placeholder="Customer / Company name" autocomplete="off"
+            <input id="partyName" type="text" list="partyList" required placeholder="Customer / Company name"
+              autocomplete="off"
               class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             <datalist id="partyList"></datalist>
           </div>
 
           <div class="pt-0.5">
             <label class="flex items-center gap-2 cursor-pointer select-none">
-              <input id="revisitCheckbox" type="checkbox" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300" />
+              <input id="revisitCheckbox" type="checkbox"
+                class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300" />
               <span class="text-xs font-bold text-amber-900 flex items-center gap-1">
                 <span>⚠️</span> Need to Revisit (Follow-up required)
               </span>
@@ -228,16 +263,14 @@
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Region *</label>
             <div id="regionPills" class="flex flex-wrap gap-1.5">
-              <button type="button" data-val="Pune"
-                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Pune</button>
-              <button type="button" data-val="Aurangabad"
-                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Aurangabad</button>
-              <button type="button" data-val="Nagpur"
-                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Nagpur</button>
-              <button type="button" data-val="Kolhapur"
-                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Kolhapur</button>
-              <button type="button" data-val="Nashik"
-                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Nashik</button>
+              <button type="button" data-val="R - Pune"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">R - Pune</button>
+              <button type="button" data-val="N - Pune"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">N - Pune</button>
+              <button type="button" data-val="MP"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">MP</button>
+              <button type="button" data-val="WB"
+                class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">WB</button>
               <button type="button" data-val="__OTHER__"
                 class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Other</button>
             </div>
@@ -297,8 +330,8 @@
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Product Keyword *</label>
             <div id="prodKeywordPills" class="flex flex-wrap gap-1 mb-1.5">
-               <button type="button" data-val="LS"
-                 class="pill-btn active px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">LS</button>
+              <button type="button" data-val="LS"
+                class="pill-btn active px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">LS</button>
               <button type="button" data-val="BC"
                 class="pill-btn px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">BC</button>
               <button type="button" data-val="RP"
@@ -337,7 +370,7 @@
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             </div>
             <div>
-             <label for="productValue" class="block text-xs font-semibold text-slate-700 mb-1">Sales Value *</label>
+              <label for="productValue" class="block text-xs font-semibold text-slate-700 mb-1">Sales Value *</label>
               <input id="productValue" type="number" inputmode="decimal" step="0.01" min="0" required placeholder="0"
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             </div>
@@ -446,9 +479,10 @@
               <label class="block text-xs font-semibold text-slate-700 mb-1.5">Payment Status</label>
               <div id="statusPills" class="grid grid-cols-3 gap-1.5">
                 <button type="button" data-val="RCD"
-                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">RCD (Received)</button>
-                 <button type="button" data-val="PENDING"
-                   class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Pending</button>
+                  class="pill-btn active py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">RCD
+                  (Received)</button>
+                <button type="button" data-val="PENDING"
+                  class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Pending</button>
                 <button type="button" data-val="PARTIAL"
                   class="pill-btn py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Partial</button>
               </div>
@@ -748,11 +782,16 @@
   <!-- ==================== EMAIL REPORT MODAL (ADMIN ONLY) ==================== -->
   <div id="emailReportModal"
     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 text-left space-y-4 my-auto">
+    <div
+      class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 text-left space-y-4 my-auto">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          <div
+            class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
           </div>
           <h3 class="text-base font-bold text-slate-900">Send Email Report</h3>
         </div>
@@ -769,9 +808,11 @@
           <button type="button" data-val="QUARTER"
             class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Quarter</button>
           <button type="button" data-val="FY"
-            class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Annual FY</button>
+            class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">Annual
+            FY</button>
           <button type="button" data-val="ALL"
-            class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">All Time</button>
+            class="pill-btn py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700">All
+            Time</button>
         </div>
       </div>
 
@@ -779,18 +820,21 @@
       <div id="emailMonthGroup" class="grid grid-cols-2 gap-2.5">
         <div>
           <label for="emailMonthSelect" class="block text-xs font-semibold text-slate-700 mb-1">Month</label>
-          <select id="emailMonthSelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+          <select id="emailMonthSelect"
+            class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
         </div>
         <div>
           <label for="emailYearSelect" class="block text-xs font-semibold text-slate-700 mb-1">Year</label>
-          <select id="emailYearSelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+          <select id="emailYearSelect"
+            class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
         </div>
       </div>
 
       <div id="emailQuarterGroup" class="hidden grid grid-cols-2 gap-2.5">
         <div>
           <label for="emailQuarterSelect" class="block text-xs font-semibold text-slate-700 mb-1">Quarter</label>
-          <select id="emailQuarterSelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none">
+          <select id="emailQuarterSelect"
+            class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none">
             <option value="Q1">Q1 (APR - JUN)</option>
             <option value="Q2">Q2 (JUL - SEP)</option>
             <option value="Q3">Q3 (OCT - DEC)</option>
@@ -798,14 +842,17 @@
           </select>
         </div>
         <div>
-          <label for="emailQuarterFySelect" class="block text-xs font-semibold text-slate-700 mb-1">Financial Year</label>
-          <select id="emailQuarterFySelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+          <label for="emailQuarterFySelect" class="block text-xs font-semibold text-slate-700 mb-1">Financial
+            Year</label>
+          <select id="emailQuarterFySelect"
+            class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
         </div>
       </div>
 
       <div id="emailFyGroup" class="hidden">
         <label for="emailFySelect" class="block text-xs font-semibold text-slate-700 mb-1">Financial Year</label>
-        <select id="emailFySelect" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+        <select id="emailFySelect"
+          class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-2 text-sm font-medium focus:bg-white focus:border-blue-600 focus:outline-none"></select>
       </div>
 
       <!-- Entity Filters -->
@@ -813,14 +860,17 @@
         <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Optional Filters</div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div>
-            <label for="emailPartySelect" class="block text-[11px] font-semibold text-slate-700 mb-1">Party / Client</label>
-            <select id="emailPartySelect" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
+            <label for="emailPartySelect" class="block text-[11px] font-semibold text-slate-700 mb-1">Party /
+              Client</label>
+            <select id="emailPartySelect"
+              class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
               <option value="">All Parties</option>
             </select>
           </div>
           <div>
             <label for="emailProductSelect" class="block text-[11px] font-semibold text-slate-700 mb-1">Product</label>
-            <select id="emailProductSelect" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
+            <select id="emailProductSelect"
+              class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
               <option value="">All Products</option>
               <option value="LS">LS — Leadshine</option>
               <option value="BC">BC — Bochu</option>
@@ -837,7 +887,8 @@
           </div>
           <div>
             <label for="emailRepSelect" class="block text-[11px] font-semibold text-slate-700 mb-1">Sales Person</label>
-            <select id="emailRepSelect" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
+            <select id="emailRepSelect"
+              class="w-full rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs focus:bg-white focus:border-blue-600 focus:outline-none">
               <option value="">All Reps</option>
             </select>
           </div>
@@ -884,7 +935,10 @@
           class="w-1/3 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
         <button id="sendEmailReportBtn" type="button"
           class="w-2/3 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white shadow-md flex items-center justify-center gap-1.5">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
           <span id="sendEmailReportBtnText">Send Email Report</span>
         </button>
       </div>
@@ -908,6 +962,7 @@
         { code: 'OT', name: 'Other', active: true, pin: '3333', role: 'SALES' },
         { code: 'ADMIN', name: 'Administrator', active: true, pin: '9999', role: 'ADMIN' }
       ];
+      var DEFAULT_REGIONS = ['R - Pune', 'N - Pune', 'MP', 'WB'];
       var IS_LIVE_GAS = (typeof google !== 'undefined' && google.script && google.script.run);
       var STORAGE_KEY = 'rk_sales_multiyear_preview_v2';
       var SESSION_USER_KEY = 'rk_sales_auth_session_v3';
@@ -917,6 +972,362 @@
       var deferredInstallPrompt = null;
       var INITIAL_EDIT_ID = '';
       var initialEditOpened = false;
+
+      // ==========================================
+      // RKSalesDB: INDEXEDDB STORAGE ENGINE
+      // Clean asynchronous wrapper with localStorage fallback
+      // ==========================================
+      var RKSalesDB = (function () {
+        var DB_NAME = 'RKSalesDB';
+        var DB_VERSION = 1;
+        var hasIDB = (typeof window !== 'undefined' && 'indexedDB' in window && window.indexedDB !== null);
+        var dbPromise = null;
+
+        function open() {
+          if (!hasIDB) return Promise.reject(new Error('IndexedDB not supported'));
+          if (dbPromise) return dbPromise;
+          dbPromise = new Promise(function (resolve, reject) {
+            var settled = false;
+            var timer = setTimeout(function () {
+              if (!settled) {
+                settled = true;
+                reject(new Error('IndexedDB open timeout'));
+              }
+            }, 2500);
+
+            try {
+              var req = window.indexedDB.open(DB_NAME, DB_VERSION);
+              req.onupgradeneeded = function (e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains('entries')) {
+                  var entryStore = db.createObjectStore('entries', { keyPath: 'responseId' });
+                  entryStore.createIndex('srNo', 'srNo', { unique: false });
+                  entryStore.createIndex('monthYear', 'monthYear', { unique: false });
+                }
+                if (!db.objectStoreNames.contains('pendingSync')) {
+                  db.createObjectStore('pendingSync', { keyPath: 'id', autoIncrement: true });
+                }
+                if (!db.objectStoreNames.contains('offlineAuth')) {
+                  db.createObjectStore('offlineAuth', { keyPath: 'code' });
+                }
+                if (!db.objectStoreNames.contains('meta')) {
+                  db.createObjectStore('meta', { keyPath: 'key' });
+                }
+              };
+              req.onsuccess = function (e) {
+                if (!settled) {
+                  settled = true;
+                  clearTimeout(timer);
+                  resolve(e.target.result);
+                }
+              };
+              req.onerror = function (e) {
+                if (!settled) {
+                  settled = true;
+                  clearTimeout(timer);
+                  reject(e.target.error || new Error('IndexedDB open error'));
+                }
+              };
+              req.onblocked = function () {
+                if (!settled) {
+                  settled = true;
+                  clearTimeout(timer);
+                  reject(new Error('IndexedDB open blocked'));
+                }
+              };
+            } catch (err) {
+              if (!settled) {
+                settled = true;
+                clearTimeout(timer);
+                reject(err);
+              }
+            }
+          });
+          return dbPromise;
+        }
+
+        function withStore(storeName, mode, callback) {
+          return open().then(function (db) {
+            return new Promise(function (resolve, reject) {
+              try {
+                var tx = db.transaction(storeName, mode);
+                var store = tx.objectStore(storeName);
+                var reqOrValue;
+
+                tx.onerror = function (e) {
+                  reject(tx.error || e.target.error || new Error('Transaction error'));
+                };
+                tx.onabort = function (e) {
+                  reject(tx.error || new Error('Transaction aborted'));
+                };
+                tx.oncomplete = function () {
+                  if (reqOrValue && typeof reqOrValue === 'object' && 'result' in reqOrValue) {
+                    resolve(reqOrValue.result);
+                  } else {
+                    resolve(reqOrValue);
+                  }
+                };
+
+                reqOrValue = callback(store, tx);
+                if (reqOrValue && typeof reqOrValue.onerror !== 'undefined') {
+                  reqOrValue.onerror = function (e) {
+                    reject(reqOrValue.error || e.target.error || new Error('Request error'));
+                  };
+                }
+              } catch (err) {
+                reject(err);
+              }
+            });
+          });
+        }
+
+        function checkAndMigrate() {
+          if (!hasIDB) return Promise.resolve(false);
+          return withStore('meta', 'readwrite', function (store) {
+            return store.get('migrated_v1');
+          }).then(function (val) {
+            if (val && val.value) {
+              return false;
+            }
+            var migratedEntries = [];
+            var migratedPending = [];
+            var migratedAuth = [];
+            try {
+              var rawEntries = localStorage.getItem(STORAGE_KEY);
+              if (rawEntries) migratedEntries = JSON.parse(rawEntries) || [];
+            } catch (e) { }
+            try {
+              var rawPending = localStorage.getItem(PENDING_QUEUE_KEY);
+              if (rawPending) migratedPending = JSON.parse(rawPending) || [];
+            } catch (e) { }
+            try {
+              var rawAuth = localStorage.getItem(OFFLINE_AUTH_KEY);
+              if (rawAuth) migratedAuth = JSON.parse(rawAuth) || [];
+            } catch (e) { }
+
+            return open().then(function (db) {
+              return new Promise(function (resolve) {
+                try {
+                  var tx = db.transaction(['entries', 'pendingSync', 'offlineAuth', 'meta'], 'readwrite');
+                  var eStore = tx.objectStore('entries');
+                  var pStore = tx.objectStore('pendingSync');
+                  var aStore = tx.objectStore('offlineAuth');
+                  var mStore = tx.objectStore('meta');
+
+                  if (Array.isArray(migratedEntries)) {
+                    migratedEntries.forEach(function (item) {
+                      if (item && item.responseId) eStore.put(item);
+                    });
+                  }
+                  if (Array.isArray(migratedPending)) {
+                    migratedPending.forEach(function (item) {
+                      pStore.put(item);
+                    });
+                  }
+                  if (Array.isArray(migratedAuth)) {
+                    migratedAuth.forEach(function (item) {
+                      if (item && item.code) aStore.put(item);
+                    });
+                  }
+                  mStore.put({ key: 'migrated_v1', value: true, timestamp: Date.now() });
+                  tx.oncomplete = function () { resolve(true); };
+                  tx.onerror = function () { resolve(false); };
+                } catch (txErr) {
+                  resolve(false);
+                }
+              });
+            }).catch(function () { return false; });
+          }).catch(function () { return false; });
+        }
+
+        function getAllEntries() {
+          if (!hasIDB) {
+            try {
+              var raw = localStorage.getItem(STORAGE_KEY);
+              return Promise.resolve(raw ? JSON.parse(raw) : []);
+            } catch (e) {
+              return Promise.resolve([]);
+            }
+          }
+          return withStore('entries', 'readonly', function (store) {
+            return store.getAll();
+          }).then(function (list) {
+            var items = Array.isArray(list) ? list : [];
+            items.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
+            return items;
+          }).catch(function () {
+            try {
+              var raw = localStorage.getItem(STORAGE_KEY);
+              return raw ? JSON.parse(raw) : [];
+            } catch (e) { return []; }
+          });
+        }
+
+        function saveEntries(entries) {
+          if (!Array.isArray(entries)) return Promise.resolve();
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+          } catch (e) { }
+
+          if (!hasIDB) return Promise.resolve();
+          return open().then(function (db) {
+            return new Promise(function (resolve, reject) {
+              try {
+                var tx = db.transaction('entries', 'readwrite');
+                var store = tx.objectStore('entries');
+                entries.forEach(function (entry) {
+                  if (entry && entry.responseId) {
+                    store.put(entry);
+                  }
+                });
+                tx.oncomplete = function () { resolve(); };
+                tx.onerror = function (e) { reject(tx.error || e.target.error); };
+              } catch (txErr) {
+                reject(txErr);
+              }
+            });
+          }).catch(function (err) {
+            console.warn('RKSalesDB saveEntries warning:', err);
+          });
+        }
+
+        function saveEntry(entry) {
+          if (!entry || !entry.responseId) return Promise.resolve();
+          if (!hasIDB) return Promise.resolve();
+          return withStore('entries', 'readwrite', function (store) {
+            return store.put(entry);
+          }).catch(function (err) {
+            console.warn('RKSalesDB saveEntry warning:', err);
+          });
+        }
+
+        function getPendingSync() {
+          if (!hasIDB) {
+            try {
+              var raw = localStorage.getItem(PENDING_QUEUE_KEY);
+              return Promise.resolve(raw ? JSON.parse(raw) : []);
+            } catch (e) { return Promise.resolve([]); }
+          }
+          return withStore('pendingSync', 'readonly', function (store) {
+            return store.getAll();
+          }).then(function (items) {
+            return Array.isArray(items) ? items : [];
+          }).catch(function () {
+            try {
+              var raw = localStorage.getItem(PENDING_QUEUE_KEY);
+              return raw ? JSON.parse(raw) : [];
+            } catch (e) { return []; }
+          });
+        }
+
+        function addPendingSync(payload) {
+          var item = {
+            payload: Object.assign({}, payload),
+            queuedAt: new Date().toISOString()
+          };
+          try {
+            var raw = localStorage.getItem(PENDING_QUEUE_KEY);
+            var queue = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(queue)) queue = [];
+            queue.push(item);
+            localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
+          } catch (e) { }
+
+          if (!hasIDB) return Promise.resolve(item);
+          return withStore('pendingSync', 'readwrite', function (store) {
+            return store.add(item);
+          }).then(function (id) {
+            if (id !== undefined) item.id = id;
+            return item;
+          }).catch(function () { return item; });
+        }
+
+        function removePendingSync(id) {
+          try {
+            var raw = localStorage.getItem(PENDING_QUEUE_KEY);
+            var queue = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(queue)) {
+              if (id !== undefined && id !== null) {
+                queue = queue.filter(function (x) { return x.id !== id; });
+              } else {
+                queue.shift();
+              }
+              localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(queue));
+            }
+          } catch (e) { }
+
+          if (!hasIDB) return Promise.resolve();
+          return withStore('pendingSync', 'readwrite', function (store) {
+            if (id !== undefined && id !== null) {
+              return store.delete(id);
+            }
+          }).catch(function () { });
+        }
+
+        function clearPendingSync() {
+          try { localStorage.removeItem(PENDING_QUEUE_KEY); } catch (e) { }
+          if (!hasIDB) return Promise.resolve();
+          return withStore('pendingSync', 'readwrite', function (store) {
+            return store.clear();
+          }).catch(function () { });
+        }
+
+        function getOfflineAuth() {
+          if (!hasIDB) {
+            try {
+              var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+              return Promise.resolve(raw ? JSON.parse(raw) : []);
+            } catch (e) { return Promise.resolve([]); }
+          }
+          return withStore('offlineAuth', 'readonly', function (store) {
+            return store.getAll();
+          }).then(function (items) {
+            return Array.isArray(items) ? items : [];
+          }).catch(function () {
+            try {
+              var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+              return raw ? JSON.parse(raw) : [];
+            } catch (e) { return []; }
+          });
+        }
+
+        function saveOfflineAuth(userObj) {
+          if (!userObj || !userObj.code) return Promise.resolve();
+          var cred = {
+            code: userObj.code,
+            name: userObj.name,
+            role: userObj.role,
+            pin: userObj.pin
+          };
+          try {
+            var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+            var list = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(list)) list = [];
+            list = list.filter(function (u) { return u.code !== cred.code; });
+            list.push(cred);
+            localStorage.setItem(OFFLINE_AUTH_KEY, JSON.stringify(list));
+          } catch (e) { }
+
+          if (!hasIDB) return Promise.resolve();
+          return withStore('offlineAuth', 'readwrite', function (store) {
+            return store.put(cred);
+          }).catch(function () { });
+        }
+
+        return {
+          isSupported: hasIDB,
+          init: checkAndMigrate,
+          getAllEntries: getAllEntries,
+          saveEntries: saveEntries,
+          saveEntry: saveEntry,
+          getPendingSync: getPendingSync,
+          addPendingSync: addPendingSync,
+          removePendingSync: removePendingSync,
+          clearPendingSync: clearPendingSync,
+          getOfflineAuth: getOfflineAuth,
+          saveOfflineAuth: saveOfflineAuth
+        };
+      })();
 
       try {
         var bootEl = document.getElementById('gasBoot');
@@ -1057,18 +1468,88 @@
         dashFY: getCurrentFY(),
         dashMonth: currentCalMonth(),
         salesPersons: DEFAULT_SALES_PERSONS.slice(),
+        regions: DEFAULT_REGIONS.slice(),
         allEntries: [],
         last10: [],
         sheetUrl: 'https://docs.google.com/spreadsheets/d/12WViovDOoOFiu7vQDTY2SiqTaKw5aiF4F46PPN7Xesk/edit',
-        selectedRegion: 'Pune',
+        selectedRegion: 'R - Pune',
         selectedCommType: 'P',
         selectedCommPct: '5',
         selectedTerms: 'PI',
         selectedStatus: 'RCD',
         selectedWB: 'B',
         emailReportPeriodType: 'MONTH',
-        chartInstance: null
+        chartInstance: null,
+        forceOffline: false,
+        isSyncing: false,
+        loadedFys: {},
+        pendingCount: 0
       };
+
+      try {
+        var bootEl = document.getElementById('gasBoot');
+        var boot = JSON.parse(bootEl ? bootEl.textContent : '{}');
+        if (boot && boot.editId) INITIAL_EDIT_ID = String(boot.editId);
+        if (boot && Array.isArray(boot.salesPersons) && boot.salesPersons.length) {
+          state.salesPersons = boot.salesPersons;
+        }
+        if (boot && Array.isArray(boot.regions) && boot.regions.length) {
+          state.regions = boot.regions;
+          if (state.regions.length && !state.selectedRegion) {
+            state.selectedRegion = state.regions[0];
+          }
+        }
+      } catch (bootErr) { }
+
+      function isAppOnline() {
+        return !state.forceOffline && (navigator.onLine !== false);
+      }
+
+      function updateOfflineModeUI() {
+        var toggleBtn = $('offlineModeToggle');
+        var banner = $('forceOfflineBanner');
+        var textEl = $('offlineToggleText');
+        var dotEl = toggleBtn ? toggleBtn.querySelector('span:first-child') : null;
+
+        if (state.forceOffline) {
+          if (toggleBtn) {
+            toggleBtn.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 bg-amber-950/90 text-amber-300 border border-amber-600/60 hover:bg-amber-900/90';
+          }
+          if (textEl) textEl.textContent = 'Offline';
+          if (dotEl) dotEl.className = 'w-2 h-2 rounded-full bg-amber-400';
+          if (banner) banner.classList.remove('hidden');
+        } else {
+          var netOnline = navigator.onLine !== false;
+          if (toggleBtn) {
+            if (netOnline) {
+              toggleBtn.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 bg-emerald-950/80 text-emerald-300 border border-emerald-600/50 hover:bg-emerald-900/80';
+            } else {
+              toggleBtn.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700';
+            }
+          }
+          if (textEl) textEl.textContent = netOnline ? 'Online' : 'Offline';
+          if (dotEl) dotEl.className = 'w-2 h-2 rounded-full ' + (netOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400');
+          if (banner) banner.classList.add('hidden');
+        }
+      }
+
+      function toggleOfflineMode(force) {
+        if (force !== undefined) {
+          state.forceOffline = !!force;
+        } else {
+          state.forceOffline = !state.forceOffline;
+        }
+        updateOfflineModeUI();
+        updateConnectionStatus();
+        if (state.forceOffline) {
+          showToast('Manual Offline Mode Active — changes stored locally.');
+        } else {
+          showToast('Switched to Online Mode. Syncing data...');
+          if (IS_LIVE_GAS) {
+            syncData(true);
+          }
+        }
+      }
 
       // ---------- HELPERS ----------
       function $(id) { return document.getElementById(id); }
@@ -1234,7 +1715,10 @@
 
       function populateLoginUserSelect() {
         var sel = $('loginUserSelect');
-        var activeList = state.salesPersons.filter(function (sp) { return sp.active !== false; });
+        var activeList = (state.salesPersons || []).filter(function (sp) { return sp.active !== false; });
+        if (!activeList.length) {
+          activeList = DEFAULT_SALES_PERSONS.filter(function (sp) { return sp.active !== false; });
+        }
         var html = '<option value="">Choose User...</option>';
         activeList.forEach(function (sp) {
           var roleTag = (sp.role === 'ADMIN') ? ' (Admin)' : ' (Sales)';
@@ -1256,6 +1740,22 @@
         populateLoginUserSelect();
         clearPin();
         $('loginModal').classList.remove('hidden');
+
+        // Check if offline credentials have additional users not in state.salesPersons
+        RKSalesDB.getOfflineAuth().then(function (cached) {
+          if (Array.isArray(cached) && cached.length) {
+            var updated = false;
+            cached.forEach(function (u) {
+              if (u && u.code && !state.salesPersons.some(function (sp) { return String(sp.code).toUpperCase() === String(u.code).toUpperCase(); })) {
+                state.salesPersons.push({ code: u.code, name: u.name || u.code, active: true, role: u.role || 'SALES', pin: u.pin });
+                updated = true;
+              }
+            });
+            if (updated) {
+              populateLoginUserSelect();
+            }
+          }
+        }).catch(function () { });
       }
 
       function hideLoginModal() {
@@ -1264,65 +1764,60 @@
       }
 
       function cacheOfflineCredential(userObj) {
-        try {
-          var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
-          var users = raw ? JSON.parse(raw) : [];
-          if (!Array.isArray(users)) users = [];
-          users = users.filter(function (u) { return u.code !== userObj.code; });
-          users.push({
-            code: userObj.code,
-            name: userObj.name,
-            role: userObj.role,
-            pin: userObj.pin
-          });
-          localStorage.setItem(OFFLINE_AUTH_KEY, JSON.stringify(users));
-        } catch (e) { }
+        RKSalesDB.saveOfflineAuth(userObj);
       }
 
       function localLogin(code, pin, btn) {
-        var cached = [];
-        try {
-          var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
-          cached = raw ? JSON.parse(raw) : [];
-          if (!Array.isArray(cached)) cached = [];
-        } catch (e) { cached = []; }
-        var found = cached.find(function (u) {
-          return String(u.code).toUpperCase() === String(code).toUpperCase();
-        });
-        if (!found) {
-          found = state.salesPersons.find(function (u) {
+        function verifyAndLogin(cached) {
+          var found = (cached || []).find(function (u) {
             return String(u.code).toUpperCase() === String(code).toUpperCase();
           });
+          if (!found) {
+            found = state.salesPersons.find(function (u) {
+              return String(u.code).toUpperCase() === String(code).toUpperCase();
+            });
+          }
+          btn.disabled = false;
+          btn.textContent = 'Unlock & Sign In';
+          if (!found) {
+            $('loginError').textContent = 'User "' + code + '" is not available for offline login. Sign in once while online.';
+            $('loginError').classList.remove('hidden');
+            clearPin();
+            return;
+          }
+          if (found.active === false) {
+            $('loginError').textContent = 'Account is deactivated.';
+            $('loginError').classList.remove('hidden');
+            clearPin();
+            return;
+          }
+          if (String(found.pin || '').trim() !== String(pin).trim()) {
+            $('loginError').textContent = 'Incorrect PIN.';
+            $('loginError').classList.remove('hidden');
+            clearPin();
+            return;
+          }
+          var userObj = {
+            code: found.code,
+            name: found.name,
+            role: found.role || 'SALES',
+            pin: pin
+          };
+          setAuthenticatedUser(userObj);
+          hideLoginModal();
+          showToast('Offline login: welcome, ' + userObj.name + '!');
         }
-        btn.disabled = false;
-        btn.textContent = 'Unlock & Sign In';
-        if (!found) {
-          $('loginError').textContent = 'User "' + code + '" is not available for offline login. Sign in once while online.';
-          $('loginError').classList.remove('hidden');
-          clearPin();
-          return;
-        }
-        if (found.active === false) {
-          $('loginError').textContent = 'Account is deactivated.';
-          $('loginError').classList.remove('hidden');
-          clearPin();
-          return;
-        }
-        if (String(found.pin || '').trim() !== String(pin).trim()) {
-          $('loginError').textContent = 'Incorrect PIN.';
-          $('loginError').classList.remove('hidden');
-          clearPin();
-          return;
-        }
-        var userObj = {
-          code: found.code,
-          name: found.name,
-          role: found.role || 'SALES',
-          pin: pin
-        };
-        setAuthenticatedUser(userObj);
-        hideLoginModal();
-        showToast('Offline login: welcome, ' + userObj.name + '!');
+
+        RKSalesDB.getOfflineAuth().then(function (cached) {
+          verifyAndLogin(cached);
+        }).catch(function () {
+          var cached = [];
+          try {
+            var raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+            cached = raw ? JSON.parse(raw) : [];
+          } catch (e) { }
+          verifyAndLogin(cached);
+        });
       }
 
       function executeLogin(code, pin) {
@@ -1342,9 +1837,21 @@
         btn.disabled = true;
         btn.textContent = 'Verifying...';
 
-        if (IS_LIVE_GAS && navigator.onLine !== false) {
+        if (IS_LIVE_GAS && isAppOnline()) {
+          var handled = false;
+          var loginTimeout = setTimeout(function () {
+            if (!handled) {
+              handled = true;
+              console.warn('Apps Script login timed out; falling back to offline check.');
+              localLogin(code, pin, btn);
+            }
+          }, 9000);
+
           google.script.run
             .withSuccessHandler(function (res) {
+              if (handled) return;
+              handled = true;
+              if (loginTimeout) clearTimeout(loginTimeout);
               btn.disabled = false;
               btn.textContent = 'Unlock & Sign In';
               if (res && res.ok && res.user) {
@@ -1365,7 +1872,10 @@
               }
             })
             .withFailureHandler(function (err) {
-              // Apps Script can be unreachable while navigator.onLine is
+              if (handled) return;
+              handled = true;
+              if (loginTimeout) clearTimeout(loginTimeout);
+              // Apps Script can be unreachable while isAppOnline is
               // still true. Fall back to the last credential cached online.
               localLogin(code, pin, btn);
             })
@@ -1492,6 +2002,20 @@
         $('targetTabBadge').textContent = 'Tab: ' + mo + '-' + yr;
       }
 
+      function populateRegionPills() {
+        var box = $('regionPills');
+        if (!box) return;
+        var regions = (state.regions && state.regions.length) ? state.regions : DEFAULT_REGIONS;
+        var currentVal = state.selectedRegion;
+        var html = '';
+        regions.forEach(function (reg) {
+          html += '<button type="button" data-val="' + escapeHtml(reg) + '" class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">' + escapeHtml(reg) + '</button>';
+        });
+        html += '<button type="button" data-val="__OTHER__" class="pill-btn px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">Other</button>';
+        box.innerHTML = html;
+        setPillValue('regionPills', 'selectedRegion', currentVal || regions[0] || 'R - Pune', 'regionOther');
+      }
+
       function populateDashFYOptions() {
         var curStart = fyStartYear(getCurrentFY());
         var fySet = {};
@@ -1550,7 +2074,15 @@
 
       function setPillValue(containerId, stateKey, val, otherInputId) {
         var box = $(containerId);
+        if (!box) {
+          state[stateKey] = String(val || '');
+          return;
+        }
         var btns = Array.prototype.slice.call(box.querySelectorAll('button[data-val]'));
+        if (btns.length === 0) {
+          state[stateKey] = String(val || '');
+          return;
+        }
         var match = btns.find(function (b) { return b.getAttribute('data-val') === String(val); });
         var otherEl = otherInputId ? $(otherInputId) : null;
 
@@ -1637,7 +2169,7 @@
         $('remark').value = '';
         $('accountsRemark').value = '';
         $('revisitCheckbox').checked = false;
-        setPillValue('regionPills', 'selectedRegion', 'Pune', 'regionOther');
+        setPillValue('regionPills', 'selectedRegion', (state.regions && state.regions[0]) || 'R - Pune', 'regionOther');
         setPillValue('commTypePills', 'selectedCommType', 'P');
         updateCommTypeState('P');
         setPillValue('commPctPills', 'selectedCommPct', '5', 'commPctOther');
@@ -1701,10 +2233,10 @@
 
         $('partyName').value = entry.partyName || '';
         $('revisitCheckbox').checked = !!entry.revisit;
-        setPillValue('regionPills', 'selectedRegion', entry.region || 'Pune', 'regionOther');
+        setPillValue('regionPills', 'selectedRegion', entry.region || (state.regions && state.regions[0]) || 'R - Pune', 'regionOther');
         $('poNo').value = entry.poNo || 'VERBAL';
         $('poDate').value = entry.poDate || '';
-         $('piNo').value = entry.piNo || getFyPrefix() + '-';
+        $('piNo').value = entry.piNo || getFyPrefix() + '-';
         $('piDate').value = entry.piDate || '';
         $('invoiceNo').value = entry.invoiceNo || '';
         $('invoiceDate').value = entry.invoiceDate || '';
@@ -1720,14 +2252,14 @@
         setPillValue('commPctPills', 'selectedCommPct', String(entry.commissionPct), 'commPctOther');
         $('commissionFixed').value = entry.commissionFixed || '';
         setPillValue('termsPills', 'selectedTerms', entry.paymentTerms || '', 'termsOther');
-         setPillValue('statusPills', 'selectedStatus', entry.paymentStatus || 'RCD');
+        setPillValue('statusPills', 'selectedStatus', entry.paymentStatus || 'RCD');
         setPillValue('wbPills', 'selectedWB', entry.wbBilling || 'B');
         $('remark').value = entry.remark || '';
         $('accountsRemark').value = entry.accountsRemark || '';
 
-         $('editBannerTitle').innerHTML =
-           '<span class="px-2 py-0.5 rounded-md bg-blue-800 text-white shadow-sm">#' + escapeHtml(entry.srNo) + '</span>' +
-           '<span>Editing ' + escapeHtml(entry.partyName || 'Entry') + ' • Rep: ' + escapeHtml(entry.salesPerson || '') + '</span>';
+        $('editBannerTitle').innerHTML =
+          '<span class="px-2 py-0.5 rounded-md bg-blue-800 text-white shadow-sm">#' + escapeHtml(entry.srNo) + '</span>' +
+          '<span>Editing ' + escapeHtml(entry.partyName || 'Entry') + ' • Rep: ' + escapeHtml(entry.salesPerson || '') + '</span>';
         $('editBanner').classList.remove('hidden');
         $('submitBtnText').textContent = 'Update Entry #' + entry.srNo;
         updateTargetTabBadge();
@@ -1768,28 +2300,99 @@
           queuedAt: new Date().toISOString()
         });
         savePendingQueue(queue);
+        RKSalesDB.addPendingSync(payload).then(function () {
+          updateConnectionStatus();
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'PENDING_ENQUEUED' });
+          }
+        }).catch(function () {
+          updateConnectionStatus();
+        });
       }
 
       function updateConnectionStatus() {
-        var pending = loadPendingQueue().length;
-        var online = navigator.onLine !== false;
-        var label = online ? 'Online' : 'Offline';
+        RKSalesDB.getPendingSync().then(function (queue) {
+          renderConnectionUI(queue.length);
+        }).catch(function () {
+          renderConnectionUI(loadPendingQueue().length);
+        });
+      }
+
+      function renderConnectionUI(pending) {
+        state.pendingCount = pending;
+        var online = isAppOnline();
+        var label = state.forceOffline ? 'Manual Offline' : (navigator.onLine !== false ? 'Online' : 'Offline');
         if (pending) label += ' • ' + pending + ' pending sync';
-        $('modeSubtitle').textContent = IS_LIVE_GAS
-          ? label + ' • Google Sheets'
-          : label + ' • Local Preview';
-        $('refreshBtn').textContent = pending ? 'Sync (' + pending + ')' : (online ? 'Sync' : 'Offline');
-        $('refreshBtn').title = pending
-          ? 'Sync ' + pending + ' pending change' + (pending === 1 ? '' : 's')
-          : 'Sync with Google Sheets';
+
+        var subtitle = $('modeSubtitle');
+        if (subtitle) {
+          subtitle.textContent = IS_LIVE_GAS
+            ? label + ' • Google Sheets'
+            : label + ' • Local Preview';
+        }
+
+        var refresh = $('refreshBtn');
+        if (refresh) {
+          refresh.textContent = pending ? 'Sync (' + pending + ')' : (online ? 'Sync' : 'Offline');
+          refresh.title = pending
+            ? 'Sync ' + pending + ' pending change' + (pending === 1 ? '' : 's')
+            : 'Sync with Google Sheets';
+        }
+
+        var badge = $('syncBadge');
+        var countBadge = $('syncCountBadge');
+        if (badge && countBadge) {
+          countBadge.textContent = pending;
+          if (pending > 0) badge.classList.remove('hidden');
+          else badge.classList.add('hidden');
+        }
+        updateOfflineModeUI();
       }
 
       function registerPwa() {
         if (!('serviceWorker' in navigator)) return;
         try {
+          // Google Apps Script Web Apps execute inside an iframe on script.googleusercontent.com.
+          // Service workers cannot be registered inside sandboxed iframes or on file/preview origins,
+          // because requesting ?pwa=sw on those origins returns HTML ('text/html') instead of JavaScript,
+          // causing the browser to throw "The script has an unsupported MIME type ('text/html')".
+          var isRestrictedContext = (typeof location !== 'undefined') && (
+            (window.self !== window.top) ||
+            location.hostname.indexOf('googleusercontent.com') !== -1 ||
+            location.hostname.indexOf('google.com') !== -1 ||
+            location.protocol === 'file:' ||
+            !IS_LIVE_GAS
+          );
+
+          if (isRestrictedContext) {
+            // Clean up any stale registrations on this scope to prevent persistent browser console warnings
+            if (navigator.serviceWorker.getRegistrations) {
+              navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                if (registrations && registrations.length) {
+                  for (var i = 0; i < registrations.length; i++) {
+                    registrations[i].unregister();
+                  }
+                }
+              }).catch(function () { });
+            }
+            return;
+          }
+
           var swUrl = new URL(window.location.href);
           swUrl.search = 'pwa=sw';
           navigator.serviceWorker.register(swUrl.href).catch(function () { });
+
+          // Preflight verification: verify Content-Type before registering to prevent MIME type errors
+          if (typeof fetch === 'function') {
+            fetch(swUrl.href, { method: 'HEAD' })
+              .then(function (res) {
+                var ct = (res.headers && res.headers.get('content-type')) || '';
+                if (ct.toLowerCase().indexOf('javascript') !== -1) {
+                  navigator.serviceWorker.register(swUrl.href).catch(function () { });
+                }
+              })
+              .catch(function () { });
+          }
         } catch (e) { }
       }
 
@@ -1828,28 +2431,61 @@
       }
 
       function flushPendingQueue(done) {
-        var queue = loadPendingQueue();
-        if (!IS_LIVE_GAS || !navigator.onLine || !queue.length) {
+        if (state.isSyncing) {
+          if (done) done();
+          return;
+        }
+        if (!IS_LIVE_GAS || !isAppOnline()) {
           updateConnectionStatus();
           if (done) done();
           return;
         }
-        var item = queue[0];
-        $('modeSubtitle').textContent = 'Syncing pending changes (' + queue.length + ')...';
-        google.script.run
-          .withSuccessHandler(function (res) {
-            var remaining = loadPendingQueue();
-            remaining.shift();
-            savePendingQueue(remaining);
-            if (res && res.dashboard) applyDashboardPayload(res.dashboard);
-            flushPendingQueue(done);
-          })
-          .withFailureHandler(function (err) {
+
+        RKSalesDB.getPendingSync().then(function (queue) {
+          if (!queue || !queue.length) {
+            state.isSyncing = false;
             updateConnectionStatus();
-            showToast('Pending sync paused: ' + (err.message || err), true);
             if (done) done();
-          })
-          .saveEntry(item.payload);
+            return;
+          }
+
+          state.isSyncing = true;
+          var item = queue[0];
+          $('modeSubtitle').textContent = 'Syncing pending changes (' + queue.length + ')...';
+
+          google.script.run
+            .withSuccessHandler(function (res) {
+              RKSalesDB.removePendingSync(item.id).then(function () {
+                var remaining = loadPendingQueue();
+                remaining.shift();
+                savePendingQueue(remaining);
+
+                if (res && res.dashboard) applyDashboardPayload(res.dashboard);
+                state.isSyncing = false;
+
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                  navigator.serviceWorker.controller.postMessage({
+                    type: 'SYNC_PROGRESS',
+                    remaining: queue.length - 1
+                  });
+                }
+                flushPendingQueue(done);
+              }).catch(function () {
+                state.isSyncing = false;
+                flushPendingQueue(done);
+              });
+            })
+            .withFailureHandler(function (err) {
+              state.isSyncing = false;
+              updateConnectionStatus();
+              showToast('Pending sync paused: ' + (err.message || err), true);
+              if (done) done();
+            })
+            .saveEntry(item.payload);
+        }).catch(function () {
+          state.isSyncing = false;
+          if (done) done();
+        });
       }
 
       function applyDashboardPayload(data) {
@@ -1860,12 +2496,36 @@
           populateSalesPersonOptions();
           updateSalesPersonFieldForRole();
         }
-        state.allEntries = (Array.isArray(data.allEntries) ? data.allEntries : []).map(function (entry) {
+        if (Array.isArray(data.regions) && data.regions.length) {
+          state.regions = data.regions;
+          populateRegionPills();
+        }
+
+        var incomingEntries = (Array.isArray(data.allEntries) ? data.allEntries : []).map(function (entry) {
           return normalizeEntry(entry);
         });
-        state.last10 = (Array.isArray(data.last10) ? data.last10 : state.allEntries.slice(0, 10)).map(function (entry) {
-          return normalizeEntry(entry);
+
+        // Merge incoming entries with existing state.allEntries to preserve other FYs & offline entries
+        var map = {};
+        state.allEntries.forEach(function (e) {
+          var k = e.responseId || ('sr_' + e.srNo);
+          map[k] = e;
         });
+        incomingEntries.forEach(function (e) {
+          var k = e.responseId || ('sr_' + e.srNo);
+          map[k] = e;
+        });
+        var merged = Object.keys(map).map(function (k) { return map[k]; });
+        merged.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
+
+        state.allEntries = merged;
+        state.last10 = (Array.isArray(data.last10) && data.last10.length)
+          ? data.last10.map(function (e) { return normalizeEntry(e); })
+          : state.allEntries.slice(0, 10);
+
+        savePreviewStorage();
+        RKSalesDB.saveEntries(state.allEntries);
+
         if (data.sheetUrl) {
           state.sheetUrl = data.sheetUrl;
           $('openSheetLink').href = data.sheetUrl;
@@ -1887,11 +2547,17 @@
         }
       }
 
-      function syncData(showFeedback) {
-        if (IS_LIVE_GAS && navigator.onLine !== false) {
+      function syncData(showFeedback, specificOptions) {
+        var options = specificOptions || { fy: state.dashFY || getCurrentFY(), all: false };
+        if (IS_LIVE_GAS && isAppOnline()) {
           $('modeSubtitle').textContent = 'Syncing with Google Sheets...';
           google.script.run
             .withSuccessHandler(function (data) {
+              if (options.all) {
+                state.loadedFys['ALL'] = true;
+              } else if (options.fy) {
+                state.loadedFys[options.fy] = true;
+              }
               applyDashboardPayload(data);
               flushPendingQueue(function () {
                 updateConnectionStatus();
@@ -1902,19 +2568,36 @@
               updateConnectionStatus();
               showToast('Sync failed: ' + (err.message || err), true);
             })
-            .getDashboardData();
+            .getDashboardData(options);
         } else {
-          $('previewBanner').classList.remove('hidden');
-          $('modeSubtitle').textContent = 'Interactive Preview Mode (Multi-Year)';
+          if (!state.forceOffline) {
+            $('previewBanner').classList.remove('hidden');
+            $('modeSubtitle').textContent = 'Interactive Preview Mode (Multi-Year)';
+          } else {
+            $('modeSubtitle').textContent = 'Manual Offline Mode • Local Storage';
+          }
           var local = loadPreviewStorage();
-          local.sort(function (a, b) { return b.srNo - a.srNo; });
+          local.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
           applyDashboardPayload({
             salesPersons: state.salesPersons,
             allEntries: local,
             last10: local.slice(0, 10)
-           });
-          updateConnectionStatus();
-          if (showFeedback) showToast(navigator.onLine === false ? 'Offline mode: local data ready' : 'Local state refreshed');
+          });
+          RKSalesDB.getAllEntries().then(function (idbEntries) {
+            if (idbEntries && idbEntries.length > 0 && idbEntries.length !== state.allEntries.length) {
+              applyDashboardPayload({
+                salesPersons: state.salesPersons,
+                allEntries: idbEntries,
+                last10: idbEntries.slice(0, 10)
+              });
+            }
+            updateConnectionStatus();
+          }).catch(function () {
+            updateConnectionStatus();
+          });
+          if (showFeedback) {
+            showToast(state.forceOffline ? 'Manual offline mode active' : (navigator.onLine === false ? 'Offline mode: local data ready' : 'Local state refreshed'));
+          }
         }
       }
 
@@ -1967,8 +2650,8 @@
           productValue: toNum($('productValue').value),
           freightCharges: toNum($('freightCharges').value),
           commissionType: state.selectedCommType,
-           commissionPct: state.selectedCommType === 'F' ? 0 : getEffectiveCommPct(),
-           commissionFixed: state.selectedCommType === 'P' ? 0 : toNum($('commissionFixed').value),
+          commissionPct: state.selectedCommType === 'F' ? 0 : getEffectiveCommPct(),
+          commissionFixed: state.selectedCommType === 'P' ? 0 : toNum($('commissionFixed').value),
           paymentTerms: termsVal,
           paymentStatus: state.selectedStatus,
           wbBilling: state.selectedWB,
@@ -1981,7 +2664,7 @@
         btn.classList.add('opacity-70');
         $('submitBtnText').textContent = payload.responseId ? 'Updating...' : 'Saving...';
 
-        if (IS_LIVE_GAS && navigator.onLine !== false) {
+        if (IS_LIVE_GAS && isAppOnline()) {
           google.script.run
             .withSuccessHandler(function (res) {
               btn.disabled = false;
@@ -1998,7 +2681,7 @@
             })
             .saveEntry(payload);
         } else {
-          // Preview Mode local save
+          // Preview / Offline Mode local save
           var pv = payload.productValue;
           var fr = payload.freightCharges;
           var gst = Math.round((pv + fr) * 0.18 * 100) / 100;
@@ -2027,10 +2710,13 @@
           if (idx >= 0) state.allEntries[idx] = rec;
           else state.allEntries.unshift(rec);
 
-           state.allEntries.sort(function (a, b) { return b.srNo - a.srNo; });
-           savePreviewStorage();
-           if (IS_LIVE_GAS) enqueuePendingPayload(payload);
-           applyDashboardPayload({
+          state.allEntries.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
+          savePreviewStorage();
+          RKSalesDB.saveEntries(state.allEntries);
+          if (IS_LIVE_GAS || state.forceOffline) {
+            enqueuePendingPayload(payload);
+          }
+          applyDashboardPayload({
             salesPersons: state.salesPersons,
             allEntries: state.allEntries,
             last10: state.allEntries.slice(0, 10)
@@ -2127,6 +2813,14 @@
       $('dashFySelect').addEventListener('change', function () {
         state.dashFY = $('dashFySelect').value;
         renderDashboard();
+        if (IS_LIVE_GAS && isAppOnline()) {
+          var targetFy = state.dashFY;
+          if (targetFy === 'ALL' && !state.loadedFys['ALL']) {
+            syncData(false, { all: true });
+          } else if (targetFy !== 'ALL' && !state.loadedFys[targetFy]) {
+            syncData(false, { fy: targetFy, all: false });
+          }
+        }
       });
 
       function entryMatchesFY(entry, fyStr) {
@@ -2349,7 +3043,7 @@
         saveBtn.disabled = true;
         saveBtn.textContent = 'Updating...';
 
-        if (IS_LIVE_GAS) {
+        if (IS_LIVE_GAS && isAppOnline()) {
           google.script.run
             .withSuccessHandler(function (res) {
               saveBtn.disabled = false;
@@ -2571,7 +3265,7 @@
         btnText.textContent = 'Sending...';
         msgEl.classList.add('hidden');
 
-        if (IS_LIVE_GAS) {
+        if (IS_LIVE_GAS && isAppOnline()) {
           google.script.run
             .withSuccessHandler(function (res) {
               btn.disabled = false;
@@ -2617,7 +3311,7 @@
         btn.classList.add('opacity-70');
         btn.textContent = 'Backing up...';
 
-        if (IS_LIVE_GAS && navigator.onLine !== false) {
+        if (IS_LIVE_GAS && isAppOnline()) {
           google.script.run
             .withSuccessHandler(function (res) {
               btn.disabled = false;
@@ -2655,6 +3349,7 @@
       populateDashFYOptions();
 
       setupPillGroup('regionPills', 'selectedRegion', 'regionOther');
+      populateRegionPills();
       setupPillGroup('commTypePills', 'selectedCommType', null, updateCommTypeState);
       setupPillGroup('commPctPills', 'selectedCommPct', 'commPctOther', updateLiveCalc);
       setupPillGroup('termsPills', 'selectedTerms', 'termsOther');
@@ -2711,16 +3406,16 @@
         var val = btn.getAttribute('data-val');
         var tokens = getKeywordTokens();
 
-         var upper = val.toUpperCase();
-         var idx = tokens.indexOf(upper);
-         if (idx !== -1) {
-           tokens.splice(idx, 1);
-         } else {
-           tokens.push(upper);
-         }
-         $('productKeyword').value = tokens.join(' + ');
-         updateProdKeywordPillStates();
-       });
+        var upper = val.toUpperCase();
+        var idx = tokens.indexOf(upper);
+        if (idx !== -1) {
+          tokens.splice(idx, 1);
+        } else {
+          tokens.push(upper);
+        }
+        $('productKeyword').value = tokens.join(' + ');
+        updateProdKeywordPillStates();
+      });
 
       $('productKeyword').addEventListener('input', updateProdKeywordPillStates);
 
@@ -2746,6 +3441,8 @@
       $('recentSearch').addEventListener('input', renderRecentList);
       $('logoutBtn').addEventListener('click', logoutUser);
       $('backupDataBtn').addEventListener('click', handleBackupClick);
+      $('offlineModeToggle').addEventListener('click', function () { toggleOfflineMode(); });
+      $('disableForceOfflineBtn').addEventListener('click', function () { toggleOfflineMode(false); });
 
       // Change PIN handlers
       $('openChangePinBtn').addEventListener('click', openChangePinDialog);
@@ -2812,9 +3509,13 @@
       } else {
         showLoginModal();
       }
+      RKSalesDB.init().catch(function (err) {
+        console.warn('RKSalesDB init warning:', err);
+      });
       syncData(false);
       registerPwa();
       setupPwaInstallButton();
+      updateOfflineModeUI();
       updateConnectionStatus();
 
       window.rkSalesApp = {
@@ -2824,7 +3525,11 @@
         getFYFromMonthYear: getFYFromMonthYear,
         renderDashboard: renderDashboard,
         applyDashboardPayload: applyDashboardPayload,
-        state: state
+        state: state,
+        RKSalesDB: RKSalesDB,
+        toggleOfflineMode: toggleOfflineMode,
+        syncData: syncData,
+        flushPendingQueue: flushPendingQueue
       };
     })();
   </script>
