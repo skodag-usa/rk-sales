@@ -2,7 +2,7 @@
 
 ## Last verified commit
 
-- `dc785effef8b6acfca9e57779b133f72396ff6fb` — `dc785ef` ("updated the report and update columns")
+- `ef32370` ("feat: add support for advanced multi-part commission types and calculations") + subsequent verification of PI uniqueness per FY, soft delete with strikethrough in Excel (both from Edit banner and direct Transactions page cards), `=ROW()-1` formula serial numbers, Transactions makeover, calculated product value allocation validation, and party name lookup auto-sync with 2-character autocomplete threshold.
 
 ## Status
 

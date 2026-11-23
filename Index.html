@@ -174,13 +174,19 @@
             <span class="px-2 py-0.5 rounded-md bg-blue-800 text-white">#1</span>
             <span>Editing Entry</span>
           </span>
-          <span class="block text-blue-700">Changes update the month tab (and move the entry if Month/Year
-            changes.</span>
+          <span class="block text-blue-700">Changes update the month tab (and move the entry if Month/Year changes).</span>
         </div>
-        <button id="cancelEditBtn" type="button"
-          class="px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-xs font-semibold text-blue-800 hover:bg-blue-100">
-          Cancel Edit
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button id="deleteEntryBtn" type="button"
+            class="px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-300 text-xs font-semibold text-rose-700 hover:bg-rose-100 flex items-center gap-1 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            Delete
+          </button>
+          <button id="cancelEditBtn" type="button"
+            class="px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-xs font-semibold text-blue-800 hover:bg-blue-100">
+            Cancel
+          </button>
+        </div>
       </div>
 
       <form id="salesForm" class="space-y-4" novalidate>
@@ -244,7 +250,7 @@
 
           <div>
             <label for="partyName" class="block text-xs font-semibold text-slate-700 mb-1">Party Name *</label>
-            <input id="partyName" type="text" list="partyList" required placeholder="Customer / Company name"
+            <input id="partyName" type="text" required placeholder="Customer / Company name"
               autocomplete="off"
               class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
             <datalist id="partyList"></datalist>
@@ -303,6 +309,7 @@
               <label for="piNo" class="block text-xs font-semibold text-slate-700 mb-1">PI No.</label>
               <input id="piNo" type="text" placeholder="e.g. 2627-101"
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:bg-white focus:border-blue-600 focus:outline-none" />
+              <div id="piDuplicateWarning" class="hidden text-[11px] text-rose-600 font-semibold mt-1"></div>
             </div>
             <div>
               <label for="piDate" class="block text-xs font-semibold text-slate-700 mb-1">PI Date</label>
@@ -635,18 +642,38 @@
       </form>
     </section>
 
-    <!-- ==================== VIEW 2: LAST 10 TRANSACTIONS ==================== -->
+    <!-- ==================== VIEW 2: TRANSACTIONS ==================== -->
     <section id="viewRecent" class="hidden space-y-3">
       <div class="flex items-center justify-between gap-2">
         <div>
-          <h2 class="text-base font-bold text-slate-900">Last 10 Transactions</h2>
-          <p id="recentSubtitle" class="text-xs text-slate-500">Tap edit on your entries to update</p>
+          <h2 class="text-base font-bold text-slate-900">Transactions</h2>
+          <p id="recentSubtitle" class="text-xs text-slate-500">View and manage monthly records in descending order</p>
         </div>
         <span id="recentCountBadge" class="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-bold">0
           total</span>
       </div>
 
-      <input id="recentSearch" type="search" placeholder="Filter by party, month-year, PO #, rep, product..."
+      <!-- Month & Year Filters for Transactions -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Select Month</span>
+          <span id="transMonthHint" class="text-[11px] text-blue-800 font-semibold">Current Month</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="transMonthSelect" class="block text-[11px] font-semibold text-slate-600 mb-1">Month</label>
+            <select id="transMonthSelect"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+          </div>
+          <div>
+            <label for="transYearSelect" class="block text-[11px] font-semibold text-slate-600 mb-1">Year</label>
+            <select id="transYearSelect"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none"></select>
+          </div>
+        </div>
+      </div>
+
+      <input id="recentSearch" type="search" placeholder="Filter by party, PO #, PI #, rep, product..."
         class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-600 focus:outline-none" />
 
       <div id="recentList" class="space-y-2.5"></div>
@@ -736,7 +763,7 @@
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10" />
         </svg>
-        <span class="text-[11px]">Last 10</span>
+        <span class="text-[11px]">Transactions</span>
       </button>
       <button type="button" data-tab="dashboard"
         class="nav-btn py-2.5 flex flex-col items-center justify-center gap-0.5 text-slate-500 font-medium">
@@ -1701,6 +1728,9 @@
         if (mo) entry.month = mo;
         if (yr) entry.year = yr;
         if (mo && yr) entry.monthYear = mo + '-' + yr;
+        if (entry.isDeleted === undefined) {
+          entry.isDeleted = String(entry.remark || '').indexOf('[DELETED]') !== -1;
+        }
         return entry;
       }
 
@@ -1735,8 +1765,11 @@
         activeTab: 'form',
         dashFY: getCurrentFY(),
         dashMonth: currentCalMonth(),
+        transMonth: currentCalMonth(),
+        transYear: currentYear(),
         salesPersons: DEFAULT_SALES_PERSONS.slice(),
         regions: DEFAULT_REGIONS.slice(),
+        parties: [],
         allEntries: [],
         last10: [],
         sheetUrl: 'https://docs.google.com/spreadsheets/d/12WViovDOoOFiu7vQDTY2SiqTaKw5aiF4F46PPN7Xesk/edit',
@@ -1767,6 +1800,9 @@
           if (state.regions.length && !state.selectedRegion) {
             state.selectedRegion = state.regions[0];
           }
+        }
+        if (boot && Array.isArray(boot.parties) && boot.parties.length) {
+          state.parties = boot.parties;
         }
       } catch (bootErr) { }
 
@@ -1862,21 +1898,50 @@
         sel.value = String(curY);
       }
 
-      function populatePartyDatalist() {
-        var dl = $('partyList');
-        if (!dl) return;
+      function getAllParties() {
         var partySet = {};
-        state.allEntries.forEach(function (e) {
-          if (e.partyName && e.partyName.trim()) {
+        if (Array.isArray(state.parties)) {
+          state.parties.forEach(function (p) {
+            if (p && p.trim()) partySet[p.trim()] = true;
+          });
+        }
+        (state.allEntries || []).forEach(function (e) {
+          if (!e.isDeleted && e.partyName && e.partyName.trim()) {
             partySet[e.partyName.trim()] = true;
           }
         });
-        var sorted = Object.keys(partySet).sort(function (a, b) {
+        return Object.keys(partySet).sort(function (a, b) {
           return a.localeCompare(b, undefined, { sensitivity: 'base' });
         });
-        dl.innerHTML = sorted.map(function (p) {
+      }
+
+      function updatePartyAutocomplete(inputVal) {
+        var input = $('partyName');
+        var dl = $('partyList');
+        if (!input || !dl) return;
+        var rawVal = (inputVal !== undefined && typeof inputVal === 'string') ? inputVal : (input.value || '');
+        var val = rawVal.trim().toLowerCase();
+        if (val.length < 2) {
+          dl.innerHTML = '';
+          if (typeof input.removeAttribute === 'function') {
+            input.removeAttribute('list');
+          } else {
+            input.setAttribute('list', '');
+          }
+          return;
+        }
+        input.setAttribute('list', 'partyList');
+        var all = getAllParties();
+        var matches = all.filter(function (p) {
+          return p.toLowerCase().indexOf(val) !== -1;
+        });
+        dl.innerHTML = matches.map(function (p) {
           return '<option value="' + escapeHtml(p) + '">';
         }).join('');
+      }
+
+      function populatePartyDatalist() {
+        updatePartyAutocomplete();
       }
 
       function renderMultiParts() {
@@ -2580,6 +2645,21 @@
             var c2 = Math.round(calcP2 * (p2Pct / 100) * 100) / 100;
             var totalComm = Math.round((c1 + c2) * 100) / 100;
 
+            var ppHintEl = $('commPPSplitHint');
+            if (ppHintEl) {
+              var actualP1 = toNum($('commP1ProductValue').value);
+              var actualP2 = toNum($('commP2ProductValue').value);
+              var actualSum = actualP1 + actualP2;
+              if (pv > 0 && actualSum > pv) {
+                var ppOver = Math.round((actualSum - pv) * 100) / 100;
+                ppHintEl.innerHTML = '<span class="text-rose-600 font-bold">Over-allocated by ' + fmtINR(ppOver) + ' (' + fmtINR(actualSum) + ' / ' + fmtINR(pv) + ')</span>';
+              } else if (pv > 0 && actualSum > 0) {
+                ppHintEl.innerHTML = '<span class="text-indigo-700 font-medium">Allocated: ' + fmtINR(actualSum) + ' / ' + fmtINR(pv) + '</span>';
+              } else {
+                ppHintEl.textContent = 'Different % on different amounts';
+              }
+            }
+
             $('calcGst').textContent = fmtINR(gst);
             $('calcTotal').textContent = fmtINR(total);
             $('calcCommPct').textContent = fmtINR(c1);
@@ -2668,6 +2748,18 @@
           if (ct === 'P + F') {
             var splitPct = toNum($('commPctProductValue').value);
             var splitFix = toNum($('commFixedProductValue').value);
+            var totalSplit = splitPct + splitFix;
+            var hintEl = $('commSplitHint');
+            if (hintEl) {
+              if (pv > 0 && totalSplit > pv) {
+                var over = Math.round((totalSplit - pv) * 100) / 100;
+                hintEl.innerHTML = '<span class="text-rose-600 font-bold">Over-allocated by ' + fmtINR(over) + ' (' + fmtINR(totalSplit) + ' / ' + fmtINR(pv) + ')</span>';
+              } else if (pv > 0 && totalSplit > 0) {
+                hintEl.innerHTML = '<span class="text-blue-700 font-medium">Allocated: ' + fmtINR(totalSplit) + ' / ' + fmtINR(pv) + '</span>';
+              } else {
+                hintEl.textContent = 'Split sales value into % and Fixed parts';
+              }
+            }
             if (splitPct > 0) {
               pctPv = splitPct;
               fixPv = splitFix > 0 ? splitFix : Math.max(0, pv - splitPct);
@@ -2738,6 +2830,7 @@
           $('month').value = currentCalMonth();
           $('year').value = currentYear();
           $('partyName').value = '';
+          updatePartyAutocomplete('');
           $('poNo').value = 'VERBAL';
           $('poDate').value = todayIso();
           $('piNo').value = getFyPrefix() + '-';
@@ -2788,6 +2881,11 @@
             return;
           }
 
+          if (entry.isDeleted) {
+            showToast('Cannot edit a deleted/cancelled entry (#' + (entry.srNo || '') + ').', true);
+            return;
+          }
+
           // Permission check: Non-admins cannot edit entries of other salespersons!
           var isAdm = (state.currentUser.role === 'ADMIN');
           var isOwner = (entry.salesPerson && entry.salesPerson.toUpperCase() === state.currentUser.code.toUpperCase());
@@ -2827,6 +2925,7 @@
           updateSalesPersonFieldForRole();
 
           $('partyName').value = entry.partyName || '';
+          updatePartyAutocomplete(entry.partyName || '');
           $('revisitCheckbox').checked = !!entry.revisit;
           setPillValue('regionPills', 'selectedRegion', entry.region || (state.regions && state.regions[0]) || 'R - Pune', 'regionOther');
           $('poNo').value = entry.poNo || 'VERBAL';
@@ -3119,7 +3218,7 @@
             var item = queue[0];
             $('modeSubtitle').textContent = 'Syncing pending changes (' + queue.length + ')...';
 
-            google.script.run
+            var runner = google.script.run
               .withSuccessHandler(function (res) {
                 RKSalesDB.removePendingSync(item.id).then(function () {
                   var remaining = loadPendingQueue();
@@ -3146,8 +3245,13 @@
                 updateConnectionStatus();
                 showToast('Pending sync paused: ' + (err.message || err), true);
                 if (done) done();
-              })
-              .saveEntry(item.payload);
+              });
+
+            if (item.payload && item.payload.isDelete) {
+              runner.deleteEntry(item.payload);
+            } else {
+              runner.saveEntry(item.payload);
+            }
           }).catch(function () {
             state.isSyncing = false;
             if (done) done();
@@ -3165,6 +3269,9 @@
           if (Array.isArray(data.regions) && data.regions.length) {
             state.regions = data.regions;
             populateRegionPills();
+          }
+          if (Array.isArray(data.parties) && data.parties.length) {
+            state.parties = data.parties;
           }
 
           var incomingEntries = (Array.isArray(data.allEntries) ? data.allEntries : []).map(function (entry) {
@@ -3187,7 +3294,7 @@
           state.allEntries = merged;
           state.last10 = (Array.isArray(data.last10) && data.last10.length)
             ? data.last10.map(function (e) { return normalizeEntry(e); })
-            : state.allEntries.slice(0, 10);
+            : state.allEntries.filter(function (e) { return !e.isDeleted; }).slice(0, 10);
 
           savePreviewStorage();
           RKSalesDB.saveEntries(state.allEntries);
@@ -3196,9 +3303,11 @@
             state.sheetUrl = data.sheetUrl;
             $('openSheetLink').href = data.sheetUrl;
           }
-          $('recentCountBadge').textContent = state.allEntries.length + ' total';
+          var activeTotal = state.allEntries.filter(function (e) { return !e.isDeleted; }).length;
+          $('recentCountBadge').textContent = activeTotal + ' active (' + state.allEntries.length + ' total)';
           populatePartyDatalist();
           populateDashFYOptions();
+          populateTransFilterOptions();
           if (state.activeTab === 'recent') renderRecentList();
           if (state.activeTab === 'dashboard') renderDashboard();
           maybeOpenInitialEdit();
@@ -3293,7 +3402,42 @@
             return;
           }
 
+          // Validate PI number uniqueness per Financial Year
+          var piVal = $('piNo').value.trim();
+          if (isActualPINo(piVal)) {
+            var currentEditId = $('responseId').value.trim();
+            var targetFY = getFYFromMonthYear(mo, yr);
+            var dupEntry = state.allEntries.find(function (e) {
+              if (e.isDeleted) return false;
+              if (currentEditId && String(e.responseId) === currentEditId) return false;
+              var ePI = String(e.piNo || '').trim().toUpperCase();
+              if (!ePI || !isActualPINo(ePI) || ePI !== piVal.toUpperCase()) return false;
+              var eFY = getFYFromMonthYear(getEntryMonth(e), getEntryYear(e));
+              return eFY === targetFY;
+            });
+            if (dupEntry) {
+              showToast('Duplicate PI: "' + piVal + '" already exists in ' + targetFY + '.', true);
+              checkPIDuplicate();
+              return;
+            }
+          }
+
           var isMulti = (state.selectedCommType === 'CUSTOM' || (state.selectedCommType && state.selectedCommType.indexOf('+') !== -1 && state.selectedCommType !== 'P + F' && state.selectedCommType !== 'P + P') || (Array.isArray(state.multiParts) && state.multiParts.length > 0 && $('commMultiSection') && !$('commMultiSection').classList.contains('hidden')));
+
+          // Validate that calculated / split product value does not exceed Sales Value (productValue)
+          var pvVal = toNum($('productValue').value);
+          var allocatedPv = 0;
+          if (isMulti) {
+            allocatedPv = (state.multiParts || []).reduce(function (sum, p) { return sum + toNum(p.pv); }, 0);
+          } else if (state.selectedCommType === 'P + P') {
+            allocatedPv = toNum($('commP1ProductValue').value) + toNum($('commP2ProductValue').value);
+          } else if (state.selectedCommType === 'P + F') {
+            allocatedPv = toNum($('commPctProductValue').value) + toNum($('commFixedProductValue').value);
+          }
+          if (allocatedPv > 0 && Math.round((allocatedPv - pvVal) * 100) / 100 > 0) {
+            showToast('Calculated product value (' + fmtINR(allocatedPv) + ') cannot exceed Sales Value (' + fmtINR(pvVal) + ').', true);
+            return;
+          }
 
           var pParts = (state.multiParts || []).filter(function (p) { return p.type === 'P'; });
           var fParts = (state.multiParts || []).filter(function (p) { return p.type === 'F'; });
@@ -3456,38 +3600,120 @@
           }
         }
 
-        // ---------- RENDER LAST 10 TRANSACTIONS ----------
+        // ---------- TRANSACTIONS (MONTHLY & DESCENDING) ----------
+        function populateTransFilterOptions() {
+          var mSel = $('transMonthSelect');
+          var ySel = $('transYearSelect');
+          if (!mSel || !ySel) return;
+
+          var curMo = state.transMonth || currentCalMonth();
+          var curYr = state.transYear || currentYear();
+
+          var months = ['ALL'].concat(CAL_MONTHS);
+          mSel.innerHTML = months.map(function (mo) {
+            var label = mo === 'ALL' ? 'All Months' : mo;
+            return '<option value="' + mo + '"' + (mo === curMo ? ' selected' : '') + '>' + label + '</option>';
+          }).join('');
+          mSel.value = curMo;
+
+          var curY = Number(currentYear());
+          var ySet = {};
+          for (var y = curY - 2; y <= curY + 4; y++) {
+            ySet[String(y)] = true;
+          }
+          state.allEntries.forEach(function (e) {
+            var ey = getEntryYear(e);
+            if (ey) ySet[String(ey)] = true;
+          });
+          var yList = Object.keys(ySet).sort();
+          ySel.innerHTML = '<option value="ALL">All Years</option>' + yList.map(function (yr) {
+            return '<option value="' + yr + '"' + (yr === curYr ? ' selected' : '') + '>' + yr + '</option>';
+          }).join('');
+          ySel.value = curYr;
+
+          updateTransHint();
+        }
+
+        function updateTransHint() {
+          var hint = $('transMonthHint');
+          if (!hint) return;
+          var mVal = state.transMonth || currentCalMonth();
+          var yVal = state.transYear || currentYear();
+          if (mVal === 'ALL' && yVal === 'ALL') {
+            hint.textContent = 'All Transactions';
+          } else if (mVal === 'ALL') {
+            hint.textContent = 'All Months ' + yVal;
+          } else if (yVal === 'ALL') {
+            hint.textContent = mVal + ' (All Years)';
+          } else {
+            hint.textContent = (mVal === currentCalMonth() && yVal === currentYear()) ? ('Current Month (' + mVal + '-' + yVal + ')') : (mVal + '-' + yVal);
+          }
+        }
+
         function renderRecentList() {
           var q = ($('recentSearch').value || '').toLowerCase().trim();
           var isAdm = (state.currentUser && state.currentUser.role === 'ADMIN');
           var myCode = (state.currentUser ? state.currentUser.code.toUpperCase() : '');
+          var tMonth = state.transMonth || currentCalMonth();
+          var tYear = state.transYear || currentYear();
 
-          var list = state.last10.filter(function (item) {
+          updateTransHint();
+
+          // Load records in descending order
+          var sourceList = state.allEntries.slice();
+          sourceList.sort(function (a, b) { return (Number(b.srNo) || 0) - (Number(a.srNo) || 0); });
+
+          var list = sourceList.filter(function (item) {
+            var iMo = getEntryMonth(item);
+            var iYr = getEntryYear(item);
+            if (tMonth !== 'ALL' && iMo !== tMonth) return false;
+            if (tYear !== 'ALL' && iYr !== tYear) return false;
             if (!q) return true;
-            var hay = [item.srNo, item.monthYear, item.salesPerson, item.partyName, item.region, item.poNo, item.productKeyword, item.productName, item.revisit ? 'revisit' : ''].join(' ').toLowerCase();
+            var hay = [
+              item.srNo, item.monthYear, item.salesPerson, item.partyName,
+              item.region, item.poNo, item.piNo, item.invoiceNo, item.productKeyword,
+              item.productName, item.revisit ? 'revisit' : '', item.isDeleted ? 'deleted cancelled struck' : ''
+            ].join(' ').toLowerCase();
             return hay.indexOf(q) !== -1;
           });
 
           var container = $('recentList');
+          var activeInList = list.filter(function (x) { return !x.isDeleted; }).length;
+          $('recentCountBadge').textContent = activeInList + ' active (' + list.length + ' shown)';
+
           if (!list.length) {
-            container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">No transactions yet. Submit an entry on the New Entry tab to see it here.</div>';
+            container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">No transactions found for ' + (tMonth === 'ALL' ? 'all months' : tMonth) + ' ' + (tYear === 'ALL' ? '' : tYear) + '. Select another month or add a new entry.</div>';
             return;
           }
 
           container.innerHTML = list.map(function (item) {
+            var isDel = !!item.isDeleted;
             var isRcd = item.paymentStatus === 'RCD';
-            var badgeCls = isRcd ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700';
-            var badgeTxt = isRcd ? 'RCD' : 'Pending';
+            var badgeCls = isDel ? 'bg-rose-100 text-rose-800' : (isRcd ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700');
+            var badgeTxt = isDel ? 'CANCELLED' : (isRcd ? 'RCD' : 'Pending');
 
-            var canEdit = isAdm || (item.salesPerson && item.salesPerson.toUpperCase() === myCode);
+            var canEdit = !isDel && (isAdm || (item.salesPerson && item.salesPerson.toUpperCase() === myCode));
             var editBtnHtml = canEdit
-              ? '<button type="button" data-edit-id="' + escapeHtml(item.responseId) + '" class="shrink-0 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 active:scale-95 transition">Edit</button>'
-              : '<span class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium border border-slate-200" title="Only Admin or assigned rep can edit">Locked</span>';
+              ? '<div class="flex items-center gap-1.5 shrink-0">' +
+                '<button type="button" data-edit-id="' + escapeHtml(item.responseId) + '" class="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 active:scale-95 transition">Edit</button>' +
+                '<button type="button" data-delete-id="' + escapeHtml(item.responseId) + '" class="px-2 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 active:scale-95 transition flex items-center gap-1" title="Delete entry (strike out in Excel)">' +
+                '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>' +
+                '<span>Delete</span>' +
+                '</button>' +
+                '</div>'
+              : (isDel
+                  ? '<span class="shrink-0 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-500 text-xs font-semibold border border-rose-200">Struck Out</span>'
+                  : '<span class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium border border-slate-200" title="Only Admin or assigned rep can edit/delete">Locked</span>');
 
-            var cardBorder = item.revisit ? 'border-amber-400 bg-amber-50/40' : 'border-slate-200 bg-white';
-            var srTag = item.revisit
+            var cardBorder = isDel
+              ? 'border-slate-300 bg-slate-100/80 opacity-75'
+              : (item.revisit ? 'border-amber-400 bg-amber-50/40' : 'border-slate-200 bg-white');
+
+            var textStyle = isDel ? 'line-through text-slate-500' : 'text-slate-900';
+
+            var srTag = item.revisit && !isDel
               ? '<span class="px-1.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[11px] flex items-center gap-1 shadow-sm">⚠️ #' + item.srNo + ' Revisit</span>'
-              : '<span class="text-xs font-bold text-blue-800">#' + item.srNo + '</span>';
+              : '<span class="text-xs font-bold ' + (isDel ? 'line-through text-slate-400' : 'text-blue-800') + '">#' + item.srNo + '</span>';
 
             return (
               '<div class="rounded-2xl shadow-sm border ' + cardBorder + ' p-3.5 space-y-2">' +
@@ -3499,26 +3725,163 @@
               '<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] font-bold text-indigo-700">' + escapeHtml(item.salesPerson) + '</span>' +
               '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + badgeCls + '">' + badgeTxt + '</span>' +
               '</div>' +
-              '<div class="text-sm font-bold text-slate-900 mt-1">' + escapeHtml(item.partyName) + '</div>' +
-              '<div class="text-xs text-slate-500">' + escapeHtml(item.region) + ' • PO: ' + escapeHtml(item.poNo) + ' • ' + escapeHtml(item.productKeyword) + (item.productName ? ' (' + escapeHtml(item.productName) + ')' : '') + '</div>' +
+              '<div class="text-sm font-bold ' + textStyle + ' mt-1">' + escapeHtml(item.partyName) + '</div>' +
+              '<div class="text-xs ' + (isDel ? 'line-through text-slate-400' : 'text-slate-500') + '">' + escapeHtml(item.region) + ' • PO: ' + escapeHtml(item.poNo) + (item.piNo ? ' • PI: ' + escapeHtml(item.piNo) : '') + ' • ' + escapeHtml(item.productKeyword) + (item.productName ? ' (' + escapeHtml(item.productName) + ')' : '') + '</div>' +
               '</div>' +
               editBtnHtml +
               '</div>' +
-              '<div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">' +
-              '<div><span class="text-slate-500">Total:</span> <span class="font-bold text-slate-900">' + fmtINR(item.totalValue) + '</span></div>' +
-              '<div><span class="text-slate-500">Comm:</span> <span class="font-bold text-sky-700">' + fmtINR(item.totalCommission) + '</span></div>' +
+              '<div class="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs ' + (isDel ? 'line-through text-slate-400' : '') + '">' +
+              '<div><span class="text-slate-500">Total:</span> <span class="font-bold ' + (isDel ? 'text-slate-500' : 'text-slate-900') + '">' + fmtINR(item.totalValue) + '</span></div>' +
+              '<div><span class="text-slate-500">Comm:</span> <span class="font-bold ' + (isDel ? 'text-slate-400' : 'text-sky-700') + '">' + fmtINR(item.totalCommission) + '</span></div>' +
               '</div>' +
               '</div>'
             );
           }).join('');
         }
 
-        $('recentList').addEventListener('click', function (e) {
-          var btn = e.target.closest('button[data-edit-id]');
-          if (!btn) return;
-          var id = btn.getAttribute('data-edit-id');
+        function handleDeleteEntry(targetId, targetBtn) {
+          if (!state.currentUser) {
+            showLoginModal();
+            showToast('Please sign in to delete an entry.', true);
+            return;
+          }
+          var id = (typeof targetId === 'string' || typeof targetId === 'number') ? String(targetId).trim() : $('responseId').value.trim();
+          if (!id) {
+            showToast('No entry loaded for deletion.', true);
+            return;
+          }
           var found = state.allEntries.find(function (x) { return String(x.responseId) === String(id); });
-          if (found) loadEntryForEdit(found);
+          var srText = found ? ('#' + found.srNo + ' (' + found.partyName + ')') : ('ID ' + id);
+
+          if (!confirm('Are you sure you want to delete entry ' + srText + '?\n\nThis will strike it out in Excel/Sheets with line-through and mark it [DELETED].')) {
+            return;
+          }
+
+          var btn = (targetBtn && targetBtn.nodeType) ? targetBtn : $('deleteEntryBtn');
+          if (btn) {
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+          }
+
+          var mo = found ? getEntryMonth(found) : $('month').value;
+          var yr = found ? getEntryYear(found) : $('year').value;
+          var monthYear = (mo && yr) ? (mo + '-' + yr) : (found ? found.monthYear : '');
+
+          var payload = {
+            authCode: state.currentUser.code,
+            authPin: state.currentUser.pin,
+            responseId: id,
+            monthYear: monthYear
+          };
+
+          function onFinally() {
+            if (btn) {
+              btn.disabled = false;
+              btn.classList.remove('opacity-70');
+            }
+          }
+
+          if (IS_LIVE_GAS && isAppOnline()) {
+            google.script.run
+              .withSuccessHandler(function (res) {
+                onFinally();
+                if (res && res.dashboard) applyDashboardPayload(res.dashboard);
+                if (found) {
+                  found.isDeleted = true;
+                  found.remark = (found.remark ? found.remark + ' ' : '') + '[DELETED]';
+                }
+                if ($('responseId').value.trim() === String(id)) {
+                  resetForm(true);
+                }
+                showToast('Entry deleted and struck out in Excel sheet.');
+                switchTab('recent');
+                renderRecentList();
+              })
+              .withFailureHandler(function (err) {
+                onFinally();
+                showToast('Delete failed: ' + (err.message || err), true);
+              })
+              .deleteEntry(payload);
+          } else {
+            // Preview / Offline Mode
+            if (found) {
+              found.isDeleted = true;
+              found.remark = (found.remark ? found.remark + ' ' : '') + '[DELETED]';
+              savePreviewStorage();
+              RKSalesDB.saveEntries(state.allEntries);
+              if (IS_LIVE_GAS || state.forceOffline) {
+                enqueuePendingPayload(Object.assign({ isDelete: true }, payload));
+              }
+            }
+            onFinally();
+            if ($('responseId').value.trim() === String(id)) {
+              resetForm(true);
+            }
+            showToast('Entry marked [DELETED] and struck out (Preview/Offline).');
+            switchTab('recent');
+            renderRecentList();
+          }
+        }
+
+        function isActualPINo(piNo) {
+          if (!piNo) return false;
+          var s = String(piNo).trim();
+          if (!s) return false;
+          if (/^\d{4}-?$/.test(s)) return false;
+          return true;
+        }
+
+        function checkPIDuplicate() {
+          var piInput = $('piNo');
+          var warnEl = $('piDuplicateWarning');
+          if (!piInput || !warnEl) return;
+          var val = piInput.value.trim().toUpperCase();
+          if (!val || !isActualPINo(val)) {
+            warnEl.classList.add('hidden');
+            warnEl.textContent = '';
+            piInput.classList.remove('border-rose-500');
+            return;
+          }
+
+          var currentId = $('responseId').value.trim();
+          var mo = $('month').value || currentCalMonth();
+          var yr = $('year').value || currentYear();
+          var currentFY = getFYFromMonthYear(mo, yr);
+
+          var duplicate = state.allEntries.find(function (e) {
+            if (e.isDeleted) return false;
+            if (currentId && String(e.responseId) === currentId) return false;
+            var ePI = String(e.piNo || '').trim().toUpperCase();
+            if (!ePI || !isActualPINo(ePI) || ePI !== val) return false;
+            var eFY = getFYFromMonthYear(getEntryMonth(e), getEntryYear(e));
+            return eFY === currentFY;
+          });
+
+          if (duplicate) {
+            warnEl.textContent = '⚠️ Duplicate PI: "' + val + '" already exists in ' + currentFY + ' for ' + (duplicate.partyName || 'another entry') + ' (' + (duplicate.monthYear || '') + ')';
+            warnEl.classList.remove('hidden');
+            piInput.classList.add('border-rose-500');
+          } else {
+            warnEl.classList.add('hidden');
+            warnEl.textContent = '';
+            piInput.classList.remove('border-rose-500');
+          }
+        }
+
+        $('recentList').addEventListener('click', function (e) {
+          var editBtn = e.target.closest('button[data-edit-id]');
+          if (editBtn) {
+            var id = editBtn.getAttribute('data-edit-id');
+            var found = state.allEntries.find(function (x) { return String(x.responseId) === String(id); });
+            if (found) loadEntryForEdit(found);
+            return;
+          }
+          var delBtn = e.target.closest('button[data-delete-id]');
+          if (delBtn) {
+            var delId = delBtn.getAttribute('data-delete-id');
+            handleDeleteEntry(delId, delBtn);
+            return;
+          }
         });
 
         // ---------- RENDER MULTI-YEAR MONTHLY DASHBOARD ----------
@@ -3574,7 +3937,8 @@
             $('dashTabsHint').textContent = 'Tabs: APR-' + sy + ' to MAR-' + (sy + 1);
           }
 
-          var fyFiltered = state.allEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
+          var activeEntries = state.allEntries.filter(function (x) { return !x.isDeleted; });
+          var fyFiltered = activeEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
           var filtered = targetMo === 'ALL'
             ? fyFiltered
             : fyFiltered.filter(function (x) { return getEntryMonth(x) === targetMo; });
@@ -3865,7 +4229,7 @@
 
           var partySet = {};
           state.allEntries.forEach(function (e) {
-            if (e.partyName && e.partyName.trim()) partySet[e.partyName.trim()] = true;
+            if (!e.isDeleted && e.partyName && e.partyName.trim()) partySet[e.partyName.trim()] = true;
           });
           var parties = Object.keys(partySet).sort();
           $('emailPartySelect').innerHTML = '<option value="">All Parties</option>' + parties.map(function (p) {
@@ -3912,6 +4276,7 @@
           var targetRep = ($('emailRepSelect').value || '').toUpperCase().trim();
 
           var filtered = state.allEntries.filter(function (x) {
+            if (x.isDeleted) return false;
             if (targetParty && (x.partyName || '').toLowerCase().trim() !== targetParty) return false;
             if (targetProd && (x.productKeyword || '').toUpperCase().trim() !== targetProd) return false;
             if (targetRep && (x.salesPerson || '').toUpperCase().trim() !== targetRep) return false;
@@ -4074,6 +4439,7 @@
         populateYearOptions();
         populatePartyDatalist();
         populateDashFYOptions();
+        populateTransFilterOptions();
 
         setupPillGroup('regionPills', 'selectedRegion', 'regionOther');
         populateRegionPills();
@@ -4347,7 +4713,20 @@
         $('salesForm').addEventListener('submit', handleSubmit);
         $('resetFormBtn').addEventListener('click', function () { resetForm(true); });
         $('cancelEditBtn').addEventListener('click', function () { resetForm(true); });
-        $('refreshBtn').addEventListener('click', function () { syncData(true); });
+        $('deleteEntryBtn').addEventListener('click', handleDeleteEntry);
+        $('partyName').addEventListener('input', updatePartyAutocomplete);
+        $('transMonthSelect').addEventListener('change', function () {
+          state.transMonth = $('transMonthSelect').value;
+          renderRecentList();
+        });
+        $('transYearSelect').addEventListener('change', function () {
+          state.transYear = $('transYearSelect').value;
+          renderRecentList();
+        });
+        $('piNo').addEventListener('blur', checkPIDuplicate);
+        $('piNo').addEventListener('input', checkPIDuplicate);
+        $('month').addEventListener('change', checkPIDuplicate);
+        $('year').addEventListener('change', checkPIDuplicate);
         $('refreshBtn').addEventListener('click', function () {
           syncData(true, { skipCache: true, fy: state.dashFY || getCurrentFY(), all: false });
         });
@@ -4453,7 +4832,12 @@
           decryptPin: decryptPin,
           cacheOfflineCredential: cacheOfflineCredential,
           localLogin: localLogin,
-          populateRegionPills: populateRegionPills
+          populateRegionPills: populateRegionPills,
+          updatePartyAutocomplete: updatePartyAutocomplete,
+          populatePartyDatalist: populatePartyDatalist,
+          getAllParties: getAllParties,
+          handleDeleteEntry: handleDeleteEntry,
+          renderRecentList: renderRecentList
         };
       })();
   </script>

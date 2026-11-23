@@ -185,6 +185,7 @@ function bootJson_(editId) {
     if (ss) {
       payload.salesPersons = getSalesPersonsLookup_(ss);
       payload.regions = getRegionsLookup_(ss);
+      payload.parties = getPartiesLookup_(ss);
     }
   } catch (e) {
     // Graceful fallback if spreadsheet is not immediately available during boot
@@ -467,6 +468,244 @@ function getRegionsLookup_(ss) {
   }
 
   return DEFAULT_REGIONS.slice();
+}
+
+/**
+ * Returns active parties from the spreadsheet.
+ * Auto-detects:
+ * 1. Dedicated sheet: 'Parties', 'Party', 'Parties Lookup', 'Party Lookup', 'Customers', 'Clients'
+ * 2. 'Lookup' sheet: searches row 1 for header containing 'PARTY', 'CUSTOMER', or 'CLIENT'
+ * 3. Fallback in 'Lookup' sheet: Column K & L (Columns 11 & 12: 'Party Name', 'Active')
+ * 4. Combines with unique party names found across all month sheets.
+ */
+function getPartiesLookup_(ss) {
+  if (!ss) return [];
+
+  function extractPartiesFromValues_(vals, partyColIdx, activeColIdx) {
+    var list = [];
+    for (var i = 0; i < vals.length; i++) {
+      var row = vals[i];
+      var party = String(row[partyColIdx] || '').trim();
+      if (!party) continue;
+      var upperParty = party.toUpperCase();
+      if (upperParty === 'PARTY' || upperParty === 'PARTIES' || upperParty === 'PARTY NAME' || upperParty === 'CUSTOMER' || upperParty === 'CLIENT') {
+        continue;
+      }
+      var isActive = true;
+      if (activeColIdx >= 0 && activeColIdx < row.length) {
+        var activeVal = String(row[activeColIdx] === '' || row[activeColIdx] === null || row[activeColIdx] === undefined ? 'YES' : row[activeColIdx]).toUpperCase().trim();
+        isActive = (activeVal !== 'NO' && activeVal !== 'FALSE' && activeVal !== 'N' && activeVal !== '0');
+      }
+      if (isActive && list.indexOf(party) === -1) {
+        list.push(party);
+      }
+    }
+    return list;
+  }
+
+  var partyMap = {};
+  var partyList = [];
+
+  function addParty_(name) {
+    if (!name) return;
+    var trimmed = String(name).trim();
+    if (!trimmed || trimmed.toUpperCase() === 'TOTAL') return;
+    var lower = trimmed.toLowerCase();
+    if (!partyMap[lower]) {
+      partyMap[lower] = trimmed;
+      partyList.push(trimmed);
+    }
+  }
+
+  // 1. Check for dedicated party sheets
+  var dedicatedNames = ['Parties', 'Party', 'Parties Lookup', 'Party Lookup', 'Customers', 'Clients'];
+  for (var d = 0; d < dedicatedNames.length; d++) {
+    var pSheet = ss.getSheetByName(dedicatedNames[d]);
+    if (pSheet) {
+      var rLast = pSheet.getLastRow();
+      var cLast = pSheet.getLastColumn();
+      if (rLast >= 1 && cLast >= 1) {
+        var allVals = pSheet.getRange(1, 1, rLast, cLast).getValues();
+        var headerRow = allVals[0] || [];
+        var pCol = 0;
+        var aCol = -1;
+        for (var c = 0; c < headerRow.length; c++) {
+          var h = String(headerRow[c] || '').trim().toUpperCase();
+          if (h.indexOf('PARTY') !== -1 || h.indexOf('CUSTOMER') !== -1 || h.indexOf('CLIENT') !== -1 || h === 'NAME') {
+            pCol = c;
+          }
+          if (h === 'ACTIVE' || h === 'STATUS' || h === 'IS ACTIVE' || h === 'IS_ACTIVE') {
+            aCol = c;
+          }
+        }
+        var fromDedicated = extractPartiesFromValues_(allVals, pCol, aCol);
+        for (var i = 0; i < fromDedicated.length; i++) {
+          addParty_(fromDedicated[i]);
+        }
+      }
+    }
+  }
+
+  // 2. Check in 'Lookup' sheet
+  var sh = ss.getSheetByName('Lookup');
+  if (sh) {
+    var lastRow = sh.getLastRow();
+    var lastCol = sh.getLastColumn();
+    if (lastRow >= 1 && lastCol >= 1) {
+      var numColsToScan = Math.min(lastCol, 30);
+      var headers = sh.getRange(1, 1, 1, numColsToScan).getValues()[0] || [];
+      var matchedCol = -1;
+      var matchedActiveCol = -1;
+
+      for (var hc = 0; hc < headers.length; hc++) {
+        var hText = String(headers[hc] || '').trim().toUpperCase();
+        if (hText.indexOf('PARTY') !== -1 || hText.indexOf('CUSTOMER') !== -1 || hText.indexOf('CLIENT') !== -1) {
+          matchedCol = hc + 1; // 1-based column
+          if (hc + 1 < headers.length) {
+            var nextH = String(headers[hc + 1] || '').trim().toUpperCase();
+            if (nextH === 'ACTIVE' || nextH === 'STATUS' || nextH === 'IS ACTIVE') {
+              matchedActiveCol = hc + 2;
+            }
+          }
+          break;
+        }
+      }
+
+      if (matchedCol > 0 && lastRow >= 2) {
+        var colsToRead = matchedActiveCol > 0 ? (matchedActiveCol - matchedCol + 1) : 1;
+        var pVals = sh.getRange(2, matchedCol, lastRow - 1, colsToRead).getValues();
+        var fromLookup = extractPartiesFromValues_(pVals, 0, matchedActiveCol > 0 ? (colsToRead - 1) : -1);
+        for (var j = 0; j < fromLookup.length; j++) {
+          addParty_(fromLookup[j]);
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: Also gather from month sheets
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var msh = sheets[s];
+    var sName = msh.getName();
+    if (CORE_SHEETS[sName]) continue;
+    var tabKey = parseMonthTabKey_(sName);
+    var isLegacyMonth = FY_MONTHS.indexOf(sName) !== -1;
+    if (tabKey !== null || isLegacyMonth) {
+      var mRow = msh.getLastRow();
+      if (mRow >= 2) {
+        var numCols = Math.min(msh.getLastColumn(), 32);
+        var rowVals = msh.getRange(2, 1, mRow - 1, numCols).getValues();
+        for (var r = 0; r < rowVals.length; r++) {
+          var isRowDeleted = (rowVals[r].length >= 27 && String(rowVals[r][26] || '').indexOf('[DELETED]') !== -1);
+          if (isRowDeleted) continue;
+          var partyVal = String(rowVals[r][3] || '').trim(); // Column D is Party Name (index 3)
+          if (partyVal && partyVal.toUpperCase() !== 'TOTAL') {
+            addParty_(partyVal);
+          }
+        }
+      }
+    }
+  }
+
+  partyList.sort(function (a, b) {
+    return a.localeCompare(b, undefined, { sensitivity: 'base' });
+  });
+
+  return partyList;
+}
+
+/**
+ * Appends a party name to the Lookup sheet (or dedicated sheet) if not already present.
+ * Returns true if added, false if already existed or invalid.
+ */
+function addPartyToLookup_(ss, partyName) {
+  if (!ss || !partyName) return false;
+  var clean = String(partyName).trim();
+  if (!clean || clean.toUpperCase() === 'TOTAL') return false;
+
+  var existing = getPartiesLookup_(ss);
+  var lowerClean = clean.toLowerCase();
+  for (var i = 0; i < existing.length; i++) {
+    if (existing[i].toLowerCase() === lowerClean) {
+      return false; // Already present
+    }
+  }
+
+  // Check if dedicated sheet exists
+  var dedicatedNames = ['Parties', 'Party', 'Parties Lookup', 'Party Lookup', 'Customers', 'Clients'];
+  for (var d = 0; d < dedicatedNames.length; d++) {
+    var pSheet = ss.getSheetByName(dedicatedNames[d]);
+    if (pSheet) {
+      var rLast = pSheet.getLastRow();
+      var cLast = Math.max(2, pSheet.getLastColumn());
+      var nextRow = rLast + 1;
+      pSheet.getRange(nextRow, 1, 1, 2).setValues([[clean, 'YES']]);
+      return true;
+    }
+  }
+
+  // Otherwise, use 'Lookup' sheet
+  var sh = ss.getSheetByName('Lookup');
+  if (!sh) {
+    getSalesPersonsInternal_(ss);
+    sh = ss.getSheetByName('Lookup');
+  }
+  if (!sh) return false;
+
+  var lastCol = sh.getLastColumn();
+  var partyCol = -1;
+  var activeCol = -1;
+
+  if (lastCol >= 1) {
+    var headers = sh.getRange(1, 1, 1, Math.min(30, lastCol)).getValues()[0] || [];
+    for (var hc = 0; hc < headers.length; hc++) {
+      var hText = String(headers[hc] || '').trim().toUpperCase();
+      if (hText.indexOf('PARTY') !== -1 || hText.indexOf('CUSTOMER') !== -1 || hText.indexOf('CLIENT') !== -1) {
+        partyCol = hc + 1;
+        if (hc + 1 < headers.length) {
+          var nextH = String(headers[hc + 1] || '').trim().toUpperCase();
+          if (nextH === 'ACTIVE' || nextH === 'STATUS' || nextH === 'IS ACTIVE') {
+            activeCol = hc + 2;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // If no party column found in Lookup, initialize at Column 11 (K) & 12 (L)
+  if (partyCol === -1) {
+    partyCol = 11;
+    activeCol = 12;
+    sh.getRange(1, partyCol, 1, 2).setValues([['Party Name', 'Active']]).setFontWeight('bold').setBackground('#d9ead3');
+    try {
+      sh.getRange('L2:L500').setDataValidation(
+        SpreadsheetApp.newDataValidation().requireValueInList(['YES', 'NO'], true).build()
+      );
+    } catch (e) {}
+  }
+
+  // Find next empty row in partyCol
+  var lastRowInSheet = sh.getLastRow();
+  var targetRow = 2;
+  if (lastRowInSheet >= 2) {
+    var colData = sh.getRange(2, partyCol, lastRowInSheet - 1, 1).getValues();
+    var lastFilled = 0;
+    for (var r = 0; r < colData.length; r++) {
+      if (String(colData[r][0] || '').trim() !== '') {
+        lastFilled = r + 1;
+      }
+    }
+    targetRow = lastFilled + 2;
+  }
+
+  if (activeCol > 0) {
+    sh.getRange(targetRow, partyCol, 1, 2).setValues([[clean, 'YES']]);
+  } else {
+    sh.getRange(targetRow, partyCol, 1, 1).setValue(clean);
+  }
+
+  return true;
 }
 
 /**
@@ -802,6 +1041,69 @@ function getFYFromMonthYear_(mo, yr) {
   return 'FY ' + String(startY).slice(-2) + '-' + String(startY + 1).slice(-2);
 }
 
+function isActualPINo_(piNo) {
+  if (!piNo) return false;
+  var s = String(piNo).trim();
+  if (!s) return false;
+  if (/^\d{4}-?$/.test(s)) return false;
+  return true;
+}
+
+/**
+ * Searches across all monthly sheets in the specified financial year (targetFY)
+ * to verify if a PI Number already exists, exempting an existing record by responseId.
+ */
+function findDuplicatePIInFY_(ss, piNo, targetFY, excludeResponseId) {
+  if (!ss || !piNo || !targetFY) return null;
+  if (!isActualPINo_(piNo)) return null;
+  var cleanPI = String(piNo).trim().toUpperCase();
+  if (!cleanPI) return null;
+  var excludeId = String(excludeResponseId || '').trim();
+
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var name = sh.getName();
+    if (CORE_SHEETS[name]) continue;
+    var tabKey = parseMonthTabKey_(name);
+    var isLegacyMonth = FY_MONTHS.indexOf(name) !== -1;
+    if (tabKey !== null || isLegacyMonth) {
+      if (tabKey !== null) {
+        var mMatch = name.toUpperCase().match(/^([A-Z]{3})-(\d{4})$/);
+        if (mMatch) {
+          var sFY = getFYFromMonthYear_(mMatch[1], mMatch[2]);
+          if (sFY !== targetFY) continue;
+        }
+      }
+      var last = sh.getLastRow();
+      if (last < 2) continue;
+      var vals = sh.getRange(2, 1, last - 1, HEADERS.length).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        var r = vals[i];
+        if (String(r[0]).toUpperCase() === 'TOTAL' || String(r[3]).toUpperCase() === 'TOTAL') continue;
+        // Ignore deleted entries
+        var isDel = String(r[26] || '').indexOf('[DELETED]') !== -1;
+        if (isDel) continue;
+
+        var rowPI = String(r[7] || '').trim().toUpperCase();
+        var rowId = String((r.length >= 32 ? r[31] : r[30]) || '').trim();
+        if (excludeId && rowId === excludeId) continue;
+
+        if (rowPI && rowPI === cleanPI) {
+          return {
+            sheetName: name,
+            rowNum: i + 2,
+            piNo: r[7],
+            partyName: r[3],
+            responseId: rowId
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function findEntryById_(ss, id, hintMonthYear) {
   if (!ss || !id) return null;
 
@@ -896,6 +1198,25 @@ function saveEntry(payload) {
 
     var parts = Array.isArray(payload.commissionParts) && payload.commissionParts.length > 0 ? payload.commissionParts : null;
 
+    // Validation: Calculated / split product value cannot exceed Sales Value (productValue)
+    var allocatedPv = 0;
+    if (parts) {
+      parts.forEach(function (pt) {
+        allocatedPv += toNum_(pt.pv !== undefined ? pt.pv : pt.productValue);
+      });
+    } else if (commissionType === 'P + P') {
+      allocatedPv = toNum_(payload.commP1ProductValue) + toNum_(payload.commP2ProductValue);
+    } else if (commissionType === 'P + F') {
+      allocatedPv = toNum_(payload.commPctProductValue) + toNum_(payload.commFixedProductValue);
+    } else if (commissionType.indexOf('+') !== -1) {
+      var pVals = [toNum_(payload.commP1ProductValue), toNum_(payload.commP2ProductValue), toNum_(payload.commP3ProductValue), toNum_(payload.commP4ProductValue)];
+      var fPVals = [toNum_(payload.commF1ProductValue), toNum_(payload.commF2ProductValue), toNum_(payload.commF3ProductValue), toNum_(payload.commF4ProductValue)];
+      for (var pi = 0; pi < 4; pi++) allocatedPv += pVals[pi] + fPVals[pi];
+    }
+    if (allocatedPv > 0 && round2_(allocatedPv) > round2_(pv)) {
+      throw new Error('Calculated product value (' + round2_(allocatedPv) + ') cannot exceed Sales Value (' + round2_(pv) + ').');
+    }
+
     if (parts) {
       parts.forEach(function (pt) {
         var ptPv = toNum_(pt.pv !== undefined ? pt.pv : pt.productValue);
@@ -970,6 +1291,17 @@ function saveEntry(payload) {
       }
     }
 
+    // PI Number uniqueness validation across the Financial Year (exempting this entry if editing)
+    var piNo = String(payload.piNo || '').trim();
+    if (isActualPINo_(piNo)) {
+      var myParts = monthYear.split('-');
+      var entryFY = getFYFromMonthYear_(myParts[0], myParts[1]);
+      var dupPI = findDuplicatePIInFY_(ss, piNo, entryFY, id);
+      if (dupPI) {
+        throw new Error('PI Number "' + piNo + '" already exists in this financial year (' + entryFY + ') in sheet ' + dupPI.sheetName + ' (Party: ' + dupPI.partyName + ').');
+      }
+    }
+
     var sr = existingEntry ? existingEntry.sheet.getRange(existingEntry.rowNum, 1).getValue() : nextSr_(ss);
     if (!id) id = 'RK-' + new Date().getTime() + '-' + Math.floor(Math.random() * 10000);
 
@@ -1034,6 +1366,11 @@ function saveEntry(payload) {
     var existingMonthRow = findRow_(monthSheet, id);
     upsert_(monthSheet, existingMonthRow, row);
     updateMonthSheetSummaryRow_(monthSheet);
+    try {
+      addPartyToLookup_(ss, partyName);
+    } catch (pErr) {
+      console.warn('Could not auto-add party to lookup:', pErr);
+    }
     updateDashboardSheet_(ss);
     invalidateDashboardCache_(monthYear);
     SpreadsheetApp.flush();
@@ -1051,6 +1388,92 @@ function saveEntry(payload) {
   }
 }
 
+/**
+ * Soft deletes an entry: sets font line to line-through, sets color to muted #94a3b8,
+ * appends [DELETED] to Remark (Col 27), and refreshes summaries/dashboard.
+ */
+function deleteEntry(payload) {
+  if (!payload || typeof payload !== 'object') throw new Error('Missing delete payload.');
+  var lock = LockService.getScriptLock();
+  var locked = false;
+  try {
+    lock.waitLock(30000);
+    locked = true;
+
+    var ss = getSS_();
+    var id = sanitizeEditId_(payload.responseId || payload.id || payload.editId);
+    if (!id) throw new Error('Invalid or missing entry ID.');
+
+    // Authentication verification
+    var authUser = null;
+    var authCode = String(payload.authCode || '').toUpperCase().trim();
+    var authPin = String(payload.authPin || '').trim();
+    if (authCode && authPin) {
+      var internal = getSalesPersonsInternal_(ss);
+      for (var u = 0; u < internal.length; u++) {
+        if (internal[u].code.toUpperCase() === authCode) {
+          authUser = internal[u];
+          break;
+        }
+      }
+      if (!authUser || !authUser.active || String(authUser.pin).trim() !== authPin) {
+        throw new Error('Authentication failed. Invalid PIN or inactive user.');
+      }
+    } else {
+      throw new Error('Authentication required to delete an entry.');
+    }
+
+    var entryInfo = findEntryById_(ss, id, payload.monthYear || payload.month);
+    if (!entryInfo) {
+      throw new Error('Entry ' + id + ' not found.');
+    }
+
+    var sh = entryInfo.sheet;
+    var rowNum = entryInfo.rowNum;
+
+    // Check permissions: Sales person can only delete their own entries
+    if (authUser.role !== 'ADMIN') {
+      var existingRep = String(sh.getRange(rowNum, 3).getValue() || '').trim().toUpperCase();
+      if (existingRep && existingRep !== authUser.code.toUpperCase()) {
+        throw new Error('Permission denied: Regular sales persons can only delete their own entries.');
+      }
+    }
+
+    // Strike out in Excel / Google Sheet:
+    // Mark as deleted in Column 27 (Remark)
+    var currentRemark = String(sh.getRange(rowNum, 27).getValue() || '').trim();
+    if (currentRemark.indexOf('[DELETED]') === -1) {
+      var newRemark = (currentRemark ? currentRemark + ' ' : '') + '[DELETED]';
+      sh.getRange(rowNum, 27).setValue(newRemark);
+    }
+
+    // Set font line-through and muted color across the row
+    var rowRange = sh.getRange(rowNum, 1, 1, HEADERS.length);
+    try {
+      if (typeof rowRange.setFontLine === 'function') {
+        rowRange.setFontLine('line-through');
+      }
+      if (typeof rowRange.setFontColor === 'function') {
+        rowRange.setFontColor('#94a3b8');
+      }
+    } catch (fmtErr) {}
+
+    updateMonthSheetSummaryRow_(sh);
+    updateDashboardSheet_(ss);
+    invalidateDashboardCache_();
+    SpreadsheetApp.flush();
+
+    return {
+      ok: true,
+      message: 'Entry deleted and struck out in sheet successfully.',
+      responseId: id,
+      dashboard: buildDashboardData_(ss)
+    };
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
 function updateDashboardSheet_(ss) {
   var dash = ss ? ss.getSheetByName('Dashboard') : null;
   if (!dash) return;
@@ -1058,8 +1481,11 @@ function updateDashboardSheet_(ss) {
   var records = data.allEntries || [];
   var totalPo = 0, totalSales = 0, totalGst = 0, totalVal = 0, totalCommVal = 0, totalComm = 0;
   var pendingEntries = 0, pendingVal = 0, collectedVal = 0;
+  var activeCount = 0;
   for (var i = 0; i < records.length; i++) {
     var r = records[i];
+    if (r.isDeleted) continue;
+    activeCount++;
     totalPo += (r.poValue || 0);
     totalSales += (r.productValue || 0);
     totalGst += (r.gstValue || 0);
@@ -1074,7 +1500,7 @@ function updateDashboardSheet_(ss) {
     }
   }
   dash.getRange('B3:B12').setValues([
-    [records.length],
+    [activeCount],
     [round2_(totalPo)],
     [round2_(totalSales)],
     [round2_(totalGst)],
@@ -1129,10 +1555,11 @@ function getDashboardDataWithSS_(ss, options) {
     } catch (e) {}
   }
 
-  // Metadata lookups (salesPersons and regions) are always freshly retrieved
+  // Metadata lookups (salesPersons, regions, and parties) are always freshly retrieved
   // so edits to Lookup or Region sheets reflect immediately without waiting for cache TTL.
   var freshSalesPersons = getSalesPersonsLookup_(ss);
   var freshRegions = getRegionsLookup_(ss);
+  var freshParties = getPartiesLookup_(ss);
 
   if (cache && !options.skipCache) {
     try {
@@ -1141,6 +1568,7 @@ function getDashboardDataWithSS_(ss, options) {
         var parsed = JSON.parse(cached);
         parsed.salesPersons = freshSalesPersons;
         parsed.regions = freshRegions;
+        parsed.parties = freshParties;
         return parsed;
       }
     } catch (e) {}
@@ -1149,6 +1577,7 @@ function getDashboardDataWithSS_(ss, options) {
   var data = buildDashboardData_(ss, { fy: targetFY, all: isAll });
   data.salesPersons = freshSalesPersons;
   data.regions = freshRegions;
+  data.parties = freshParties;
 
   if (cache) {
     try {
@@ -1232,9 +1661,12 @@ function buildDashboardData_(ss, options) {
   var pendingEntries = 0;
   var pendingVal = 0;
   var collectedVal = 0;
+  var activeCount = 0;
 
   for (var i = 0; i < records.length; i++) {
     var r = records[i];
+    if (r.isDeleted) continue;
+    activeCount++;
     totalPo += (r.poValue || 0);
     totalSales += (r.productValue || 0);
     totalGst += (r.gstValue || 0);
@@ -1250,7 +1682,7 @@ function buildDashboardData_(ss, options) {
   }
 
   var summary = {
-    orderCount: records.length,
+    orderCount: activeCount,
     totalPoValue: round2_(totalPo),
     totalProductValue: round2_(totalSales),
     totalGstValue: round2_(totalGst),
@@ -1266,8 +1698,10 @@ function buildDashboardData_(ss, options) {
     sheetUrl: (ss && ss.getUrl) ? (ss.getUrl() || '') : '',
     salesPersons: getSalesPersonsLookup_(ss),
     regions: getRegionsLookup_(ss),
+    parties: getPartiesLookup_(ss),
     totalCount: records.length,
-    last10: records.slice(0, 10),
+    activeCount: activeCount,
+    last10: records.filter(function (x) { return !x.isDeleted; }).slice(0, 10),
     allEntries: records,
     summary: summary,
     kpi: summary,
@@ -1372,6 +1806,7 @@ function upsert_(sh, rowNum, row) {
   rowRange.setValues([row]);
 
   try {
+    sh.getRange(targetRow, 1).setFormula('=ROW()-1');
     sh.getRange(targetRow, 17).setFormula('=ROUND((O' + targetRow + '+P' + targetRow + ')*0.18, 2)');
     sh.getRange(targetRow, 18).setFormula('=ROUND(O' + targetRow + '+P' + targetRow + '+Q' + targetRow + ', 2)');
     var rowCommType = String(row[18] || '').trim().toUpperCase();
@@ -1457,13 +1892,13 @@ function updateMonthSheetSummaryRow_(sh) {
   var range = sh.getRange(totalRow, 1, 1, HEADERS.length);
   range.setValues([rowData]);
 
-  // Set formulas:
+  // Set formulas (excluding [DELETED] rows from calculated totals):
   // Col 14 (N): Total PO Value
   // Col 15 (O): Total Product Value
   // Col 23 (W): Total Commission
-  sh.getRange(totalRow, 14).setFormula('=SUM(N2:N' + last + ')');
-  sh.getRange(totalRow, 15).setFormula('=SUM(O2:O' + last + ')');
-  sh.getRange(totalRow, 23).setFormula('=SUM(W2:W' + last + ')');
+  sh.getRange(totalRow, 14).setFormula('=SUM(N2:N' + last + ') - SUMIF(AA2:AA' + last + ', "*[DELETED]*", N2:N' + last + ')');
+  sh.getRange(totalRow, 15).setFormula('=SUM(O2:O' + last + ') - SUMIF(AA2:AA' + last + ', "*[DELETED]*", O2:O' + last + ')');
+  sh.getRange(totalRow, 23).setFormula('=SUM(W2:W' + last + ') - SUMIF(AA2:AA' + last + ', "*[DELETED]*", W2:W' + last + ')');
 
   try {
     range.setFontWeight('bold');
@@ -1661,6 +2096,7 @@ function getAllMonthRecords_(ss, targetFY) {
           paymentStatus: String(r[24] || '').trim(),
           wbBilling: String(r[25] || ''),
           remark: String(r[26] || ''),
+          isDeleted: String(r[26] || '').indexOf('[DELETED]') !== -1,
           accountsRemark: String(r[27] || ''),
           revisit: (String(r[28] || '').toUpperCase() === 'YES' || r[28] === true),
           timestamp: (r.length >= 32 ? r[30] : r[29]) instanceof Date ? Utilities.formatDate(r.length >= 32 ? r[30] : r[29], Session.getScriptTimeZone(), 'dd-MMM-yyyy HH:mm') : String((r.length >= 32 ? r[30] : r[29]) || ''),
@@ -1719,6 +2155,7 @@ function getAllMonthRecords_(ss, targetFY) {
           paymentStatus: String(ar[24] || '').trim(),
           wbBilling: String(ar[25] || ''),
           remark: String(ar[26] || ''),
+          isDeleted: String(ar[26] || '').indexOf('[DELETED]') !== -1,
           accountsRemark: String(ar[27] || ''),
           revisit: (String(ar[28] || '').toUpperCase() === 'YES' || ar[28] === true),
           timestamp: (ar.length >= 32 ? ar[30] : ar[29]) instanceof Date ? Utilities.formatDate(ar.length >= 32 ? ar[30] : ar[29], Session.getScriptTimeZone(), 'dd-MMM-yyyy HH:mm') : String((ar.length >= 32 ? ar[30] : ar[29]) || ''),
@@ -1784,7 +2221,7 @@ function fmtINRCompact_(n) {
  */
 function generateReportData_(ss, filters) {
   filters = filters || {};
-  var records = getAllMonthRecords_(ss);
+  var records = getAllMonthRecords_(ss).filter(function (x) { return !x.isDeleted; });
   var reps = getSalesPersonsLookup_(ss);
 
   // Filter conditions

@@ -217,6 +217,21 @@ getEl('piDate').value = '2026-11-21';
 getEl('remark').value = 'Urgent priority';
 getEl('revisitCheckbox').checked = true;
 
+// Step 3a: Testing calculated product value > sales value validation
+console.log('Step 3a: Testing calculated product value > sales value validation...');
+getEl('productValue').value = '40000';
+app.state.selectedCommType = 'P + F';
+getEl('commPctProductValue').value = '25000';
+getEl('commFixedProductValue').value = '20000'; // 45000 > 40000
+getEl('salesForm').dispatchEvent({ type: 'submit' });
+assert.strictEqual(app.state.allEntries.length, 0, 'Should not save when calculated product value > sales value');
+assert.ok(getEl('toast').textContent.includes('cannot exceed Sales Value') || getEl('toast').textContent.includes('Calculated product value'), 'Toast should report calculated product value exceeding sales value: ' + getEl('toast').textContent);
+console.log('✓ Validation prevented form submission when calculated product value exceeded Sales Value.');
+
+// Restore to valid commission settings
+app.state.selectedCommType = 'P';
+getEl('commPctProductValue').value = '';
+getEl('commFixedProductValue').value = '';
 getEl('salesForm').dispatchEvent({ type: 'submit' });
 
 // Verify entry was added to state and storage

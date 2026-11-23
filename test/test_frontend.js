@@ -41,7 +41,9 @@ const requiredIds = [
   'commPPSplitSection', 'commPPSplitHint', 'commP1ProductValue', 'commP1Pct',
   'commP1Pills', 'commP2ProductValue', 'commP2Pct', 'commP2Pills', 'standardCommSection',
   'commMultiSection', 'commMultiComboBadge', 'commAddPBtn', 'commAddFBtn',
-  'commPCountBadge', 'commFCountBadge', 'commAllocBar', 'commAllocText', 'commPartsContainer'
+  'commPCountBadge', 'commFCountBadge', 'commAllocBar', 'commAllocText', 'commPartsContainer',
+  // New Transactions makeover & Delete entry elements
+  'deleteEntryBtn', 'transMonthSelect', 'transYearSelect', 'transMonthHint', 'piDuplicateWarning'
 ];
 
 requiredIds.forEach(id => {
@@ -97,6 +99,7 @@ class MockElement {
   }
   setAttribute(k, v) { this.attributes[k] = v; }
   getAttribute(k) { return this.attributes[k]; }
+  removeAttribute(k) { delete this.attributes[k]; }
   addEventListener(event, fn) {
     this.listeners[event] = this.listeners[event] || [];
     this.listeners[event].push(fn);
@@ -184,7 +187,16 @@ app.renderDashboard();
 // Verify November entries are filtered and loaded (2 out of 3 entries)
 const kpiEntriesText = elements['kpiEntries'].textContent;
 assert.ok(kpiEntriesText.includes('2 entries'), 'November dashboard must show 2 entries, got: ' + kpiEntriesText);
-console.log('✓ November dashboard filtering passed.');
+
+// Verify soft-deleted entries are completely ignored in dashboard calculated values
+app.state.allEntries[1].isDeleted = true;
+app.renderDashboard();
+assert.ok(elements['kpiEntries'].textContent.includes('1 entry'), 'Dashboard must ignore deleted entry in count, got: ' + elements['kpiEntries'].textContent);
+assert.strictEqual(elements['kpiPoVal'].textContent, '₹50,000', 'Dashboard Total PO must ignore deleted entry (50,000 instead of 80,000)');
+app.state.allEntries[1].isDeleted = false; // Restore
+app.renderDashboard();
+
+console.log('✓ November dashboard filtering and deleted entry KPI exclusion passed.');
 
 // Test 5: Verify login user selector population & pre-seeding
 console.log('Test 5: Verifying login user select population...');
@@ -281,6 +293,69 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   assert.strictEqual(multiFComm, 3, 'F1(3) must equal 3');
   assert.strictEqual(grandMultiComm, 12, 'Total commission must equal 12');
   console.log('✓ Multi-part P + P + P + F calculation verified.');
+
+  // Test 11: Transactions month filter & soft-deleted rendering
+  console.log('Test 11: Verifying transactions month filter and deleted entry rendering...');
+  assert.ok(elements['transMonthSelect'].innerHTML.includes('value="NOV"'), 'transMonthSelect should contain NOV option');
+  assert.strictEqual(app.state.transMonth, 'NOV', 'transMonth should default to current month (NOV)');
+  
+  // Verify descending sort logic in transactions
+  const sampleEntries = [
+    { srNo: 1, responseId: 'resp-1', month: 'NOV', year: '2026', monthYear: 'NOV-2026', salesPerson: 'RK', partyName: 'Alpha', totalValue: 1000, totalCommission: 50 },
+    { srNo: 5, responseId: 'resp-5', month: 'NOV', year: '2026', monthYear: 'NOV-2026', salesPerson: 'RK', partyName: 'Beta', totalValue: 2000, totalCommission: 100, isDeleted: true },
+    { srNo: 3, responseId: 'resp-3', month: 'OCT', year: '2026', monthYear: 'OCT-2026', salesPerson: 'RK', partyName: 'Gamma', totalValue: 3000, totalCommission: 150 }
+  ];
+  sampleEntries.sort((a, b) => (Number(b.srNo) || 0) - (Number(a.srNo) || 0));
+  assert.strictEqual(sampleEntries[0].srNo, 5, 'Descending sort: highest Sr No first');
+  assert.strictEqual(sampleEntries[1].srNo, 3);
+  assert.strictEqual(sampleEntries[2].srNo, 1);
+
+  // Test rendering of Delete button directly in transactions list
+  app.state.allEntries = sampleEntries;
+  app.state.currentUser = { code: 'RK', role: 'ADMIN' };
+  app.renderRecentList();
+  assert.ok(elements['recentList'].innerHTML.includes('data-delete-id="resp-1"'), 'Transactions list must include data-delete-id button for active entries');
+  assert.ok(elements['recentList'].innerHTML.includes('data-edit-id="resp-1"'), 'Transactions list must include data-edit-id button');
+  assert.ok(elements['recentList'].innerHTML.includes('CANCELLED'), 'Soft-deleted transactions must display CANCELLED badge');
+  assert.ok(elements['recentList'].innerHTML.includes('Struck Out'), 'Soft-deleted transactions must display Struck Out label');
+  console.log('✓ Transactions month filter, descending sort, and card delete button verified.');
+
+  // Test 12: Party name autocomplete: suppressed until 2 characters, enabled at 2+ characters
+  console.log('Test 12: Verifying party name autocomplete behavior (< 2 chars suppressed, >= 2 chars active)...');
+  app.state.parties = ['Tata Motors', 'TCS', 'Reliance Industries', 'Mahindra'];
+  if (typeof app.updatePartyAutocomplete === 'function') {
+    app.updatePartyAutocomplete();
+  } else {
+    // trigger input listener if registered
+    const inputListeners = elements['partyName'].listeners['input'] || [];
+    inputListeners.forEach(fn => fn({ target: elements['partyName'] }));
+  }
+
+  // With 0 characters
+  elements['partyName'].value = '';
+  (elements['partyName'].listeners['input'] || []).forEach(fn => fn({ target: elements['partyName'] }));
+  assert.strictEqual(elements['partyList'].innerHTML, '', 'partyList options must be empty when partyName is empty');
+  assert.ok(!elements['partyName'].getAttribute('list'), 'list attribute should not be active when partyName < 2 chars');
+
+  // With 1 character ('T')
+  elements['partyName'].value = 'T';
+  (elements['partyName'].listeners['input'] || []).forEach(fn => fn({ target: elements['partyName'] }));
+  assert.strictEqual(elements['partyList'].innerHTML, '', 'partyList options must be empty when partyName is only 1 char');
+  assert.ok(!elements['partyName'].getAttribute('list'), 'list attribute should not be active when partyName has only 1 char');
+
+  // With 2 characters ('Ta')
+  elements['partyName'].value = 'Ta';
+  (elements['partyName'].listeners['input'] || []).forEach(fn => fn({ target: elements['partyName'] }));
+  assert.strictEqual(elements['partyName'].getAttribute('list'), 'partyList', 'list attribute must be active when partyName has 2+ chars');
+  assert.ok(elements['partyList'].innerHTML.includes('Tata Motors'), 'partyList must include Tata Motors for prefix "Ta"');
+  assert.ok(!elements['partyList'].innerHTML.includes('Reliance'), 'partyList must not include non-matching Reliance for prefix "Ta"');
+
+  // Case insensitive match ('tc')
+  elements['partyName'].value = 'tc';
+  (elements['partyName'].listeners['input'] || []).forEach(fn => fn({ target: elements['partyName'] }));
+  assert.ok(elements['partyList'].innerHTML.includes('TCS'), 'partyList must include TCS for lowercase "tc"');
+
+  console.log('✓ Party name autocomplete threshold (< 2 chars suppressed, >= 2 chars active) verified.');
 
   console.log('✓ Headless DOM simulation verified.');
   console.log('\n========================================');

@@ -43,6 +43,8 @@ class MockRange {
   }
   getValue() { return this.getValues()[0][0]; }
   setFontWeight() { return this; }
+  setFontLine(l) { this.fontLine = l; return this; }
+  setFontColor() { return this; }
   setBackground() { return this; }
   setNumberFormat() { return this; }
   setDataValidation() { return this; }
