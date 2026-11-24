@@ -1797,6 +1797,8 @@
         transActiveCount: 0,
         transCurrentRecords: [],
         dashboardData: null,
+        dashboardsByFy: {},
+        availableFYs: [],
         salesPersons: DEFAULT_SALES_PERSONS.slice(),
         regions: DEFAULT_REGIONS.slice(),
         parties: [],
@@ -1833,6 +1835,9 @@
         }
         if (boot && Array.isArray(boot.parties) && boot.parties.length) {
           state.parties = boot.parties;
+        }
+        if (boot && Array.isArray(boot.availableFYs) && boot.availableFYs.length) {
+          state.availableFYs = boot.availableFYs;
         }
       } catch (bootErr) { }
 
@@ -2562,15 +2567,20 @@
         function populateDashFYOptions() {
           var curStart = fyStartYear(getCurrentFY());
           var fySet = {};
-          for (var y = curStart - 1; y <= curStart + 5; y++) {
+          for (var y = curStart - 4; y <= curStart + 2; y++) {
             fySet['FY ' + String(y).slice(-2) + '-' + String(y + 1).slice(-2)] = true;
+          }
+          if (Array.isArray(state.availableFYs)) {
+            state.availableFYs.forEach(function (fy) {
+              if (fy) fySet[fy] = true;
+            });
           }
           state.allEntries.forEach(function (e) {
             var mo = getEntryMonth(e);
             var yr = getEntryYear(e);
             if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
           });
-          var fys = Object.keys(fySet).sort();
+          var fys = Object.keys(fySet).sort().reverse();
           var sel = $('dashFySelect');
           sel.innerHTML = '<option value="ALL">All Years</option>' + fys.map(function (fy) {
             return '<option value="' + fy + '"' + (state.dashFY === fy ? ' selected' : '') + '>' + fy + '</option>';
@@ -2905,6 +2915,7 @@
           setPillValue('wbPills', 'selectedWB', 'B');
           $('editBanner').classList.add('hidden');
           $('submitBtnText').textContent = 'Save Sales Entry';
+          state.currentEditOriginalMonthYear = null;
 
           populateSalesPersonOptions();
           updateSalesPersonFieldForRole();
@@ -2952,6 +2963,7 @@
             }
             $('year').value = yVal;
           }
+          state.currentEditOriginalMonthYear = (mVal && yVal) ? (mVal + '-' + yVal) : (entry.monthYear || '');
 
           populateSalesPersonOptions(entry.salesPerson || '');
           if (isAdm) {
@@ -3290,7 +3302,12 @@
                   remaining.shift();
                   savePendingQueue(remaining);
 
-                  if (res && res.dashboard) applyDashboardPayload(res.dashboard);
+                  if (res && res.dashboard) {
+                  applyDashboardPayload(res.dashboard);
+                } else {
+                  state.dashboardDirty = true;
+                  state.dashboardsByFy = {};
+                }
                   state.isSyncing = false;
 
                   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -3326,6 +3343,13 @@
         function applyDashboardPayload(data) {
           if (!data) return;
           state.dashboardData = data;
+          var respFy = data.fy || (data.isAll ? 'ALL' : (state.dashFY || getCurrentFY()));
+          if (!state.dashboardsByFy) state.dashboardsByFy = {};
+          state.dashboardsByFy[respFy] = data;
+
+          if (Array.isArray(data.availableFYs) && data.availableFYs.length) {
+            state.availableFYs = data.availableFYs;
+          }
           if (Array.isArray(data.salesPersons) && data.salesPersons.length) {
             state.salesPersons = data.salesPersons;
             populateLoginUserSelect();
@@ -3520,16 +3544,16 @@
           var fParts = (state.multiParts || []).filter(function (p) { return p.type === 'F'; });
           var totalFixedAmt = fParts.reduce(function (sum, f) { return sum + toNum(f.rate); }, 0);
 
-          var stableId = $('responseId').value.trim();
-          if (!stableId) {
-            stableId = 'RK-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
-            $('responseId').value = stableId;
-          }
+          var currentEditId = $('responseId').value.trim();
+          var isEdit = !$('editBanner').classList.contains('hidden') && Boolean(currentEditId);
+          var stableId = isEdit ? currentEditId : ('RK-' + Date.now() + '-' + Math.floor(1000 + Math.random() * 9000));
 
           var payload = {
             authCode: state.currentUser.code,
             authPin: state.currentUser.pin,
             responseId: stableId,
+            isEdit: isEdit,
+            originalMonthYear: isEdit ? (state.currentEditOriginalMonthYear || (mo + '-' + yr)) : undefined,
             month: mo,
             year: yr,
             monthYear: monthYear,
@@ -3580,7 +3604,7 @@
           var btn = $('submitBtn');
           btn.disabled = true;
           btn.classList.add('opacity-70');
-          $('submitBtnText').textContent = payload.responseId ? 'Updating...' : 'Saving...';
+          $('submitBtnText').textContent = isEdit ? 'Updating...' : 'Saving...';
 
           if (IS_LIVE_GAS && isAppOnline()) {
             google.script.run
@@ -3598,6 +3622,7 @@
                   applyDashboardPayload(res.dashboard);
                 } else {
                   state.dashboardDirty = true;
+                  state.dashboardsByFy = {};
                   renderRecentList();
                 }
                 resetForm(true);
@@ -3606,7 +3631,7 @@
               .withFailureHandler(function (err) {
                 btn.disabled = false;
                 btn.classList.remove('opacity-70');
-                $('submitBtnText').textContent = payload.responseId ? 'Update Entry' : 'Save Sales Entry';
+                $('submitBtnText').textContent = isEdit ? 'Update Entry' : 'Save Sales Entry';
                 showToast('Error: ' + (err.message || err), true);
               })
               .saveEntry(payload);
@@ -3655,7 +3680,7 @@
               totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
             }
 
-            var idx = payload.responseId
+            var idx = isEdit && payload.responseId
               ? state.allEntries.findIndex(function (x) { return x.responseId === payload.responseId; })
               : -1;
             var maxSr = state.allEntries.reduce(function (m, x) { return Math.max(m, x.srNo || 0); }, 0);
@@ -3966,7 +3991,12 @@
             google.script.run
               .withSuccessHandler(function (res) {
                 onFinally();
-                if (res && res.dashboard) applyDashboardPayload(res.dashboard);
+                if (res && res.dashboard) {
+                  applyDashboardPayload(res.dashboard);
+                } else {
+                  state.dashboardDirty = true;
+                  state.dashboardsByFy = {};
+                }
                 if (found) {
                   found.isDeleted = true;
                   found.remark = (found.remark ? found.remark + ' ' : '') + '[DELETED]';
@@ -4083,15 +4113,22 @@
         });
 
         $('dashFySelect').addEventListener('change', function () {
-          state.dashFY = $('dashFySelect').value;
+          var targetFy = $('dashFySelect').value;
+          state.dashFY = targetFy;
+
+          if (state.dashboardsByFy && state.dashboardsByFy[targetFy]) {
+            state.dashboardData = state.dashboardsByFy[targetFy];
+            renderDashboard();
+            return;
+          }
+
+          $('dashActiveMonthLabel').textContent = (targetFy === 'ALL' ? 'All Years' : targetFy) + ' (Loading...)';
           renderDashboard();
+
           if (IS_LIVE_GAS && isAppOnline()) {
-            var targetFy = state.dashFY;
-            if (targetFy === 'ALL' && !state.loadedFys['ALL']) {
-              syncData(false, { all: true });
-            } else if (targetFy !== 'ALL' && !state.loadedFys[targetFy]) {
-              syncData(false, { fy: targetFy, all: false });
-            }
+            syncData(false, { fy: targetFy, all: targetFy === 'ALL' });
+          } else {
+            renderDashboard();
           }
         });
 
@@ -4119,12 +4156,79 @@
             $('dashTabsHint').textContent = 'Tabs: APR-' + sy + ' to MAR-' + (sy + 1);
           }
 
-          var hasLocalEntries = Array.isArray(state.allEntries) && state.allEntries.length > 0;
+          var curData = (state.dashboardData && (state.dashboardData.fy === state.dashFY || (state.dashFY === 'ALL' && (state.dashboardData.isAll || state.dashboardData.fy === 'ALL'))))
+            ? state.dashboardData
+            : (state.dashboardsByFy && state.dashboardsByFy[state.dashFY] ? state.dashboardsByFy[state.dashFY] : null);
+
+          var hasServerAggregates = Boolean(curData && (curData.summary || curData.monthlyBreakdown));
           var totalSales = 0, totalComm = 0, totalProduct = 0, totalPo = 0, totalGst = 0, commPctVal = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0, entriesCount = 0;
           var monthlyTotals = [];
           var repRowsHtml = '';
 
-          if (hasLocalEntries) {
+          if (hasServerAggregates) {
+            var d = curData;
+            if (targetMo === 'ALL') {
+              var sum = d.summary || {};
+              entriesCount = sum.orderCount || 0;
+              totalPo = sum.totalPoValue || 0;
+              totalProduct = sum.totalProductValue || 0;
+              totalSales = sum.totalValue || 0;
+              totalGst = sum.totalGstValue || 0;
+              commPctVal = sum.totalCommissionValuePct || 0;
+              totalComm = sum.totalCommission || 0;
+              pendingCnt = sum.pendingCount || 0;
+              pendingAmt = sum.pendingValue || 0;
+              collectedAmt = sum.collectedValue || 0;
+            } else {
+              var mb = (d.monthlyBreakdown && d.monthlyBreakdown[targetMo]) || {};
+              entriesCount = mb.orderCount || 0;
+              totalPo = mb.totalPoValue || 0;
+              totalProduct = mb.totalProductValue || 0;
+              totalSales = mb.totalValue || 0;
+              totalGst = mb.totalGstValue || 0;
+              commPctVal = mb.totalCommissionValuePct || 0;
+              totalComm = mb.totalCommission || 0;
+              pendingCnt = mb.pendingCount || 0;
+              pendingAmt = mb.pendingValue || 0;
+              collectedAmt = mb.collectedValue || 0;
+            }
+
+            var repBreakdown = d.repBreakdown || [];
+            repRowsHtml = repBreakdown.map(function (sp) {
+              var sVal = 0, cVal = 0, pVal = 0, count = 0;
+              if (targetMo === 'ALL') {
+                count = sp.orderCount || 0;
+                sVal = sp.totalValue || 0;
+                cVal = sp.totalCommission || 0;
+                pVal = sp.pendingValue || 0;
+              } else {
+                var stat = (sp.monthly && sp.monthly[targetMo]) || { orderCount: 0, totalValue: 0, totalCommission: 0, pendingValue: 0 };
+                count = stat.orderCount || 0;
+                sVal = stat.totalValue || 0;
+                cVal = stat.totalCommission || 0;
+                pVal = stat.pendingValue || 0;
+              }
+              var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
+              var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
+              return (
+                '<tr>' +
+                '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
+                '<td class="py-2 px-2 text-right font-medium text-slate-700">' + count + '</td>' +
+                '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
+                '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
+                '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
+                '</tr>'
+              );
+            }).join('');
+
+            if (Array.isArray(d.monthlySales) && d.monthlySales.length === FY_MONTHS.length) {
+              monthlyTotals = d.monthlySales;
+            } else {
+              monthlyTotals = FY_MONTHS.map(function (mo) {
+                return (d.monthlyBreakdown && d.monthlyBreakdown[mo]) ? d.monthlyBreakdown[mo].totalValue : 0;
+              });
+            }
+          } else if (Array.isArray(state.allEntries) && state.allEntries.length > 0) {
             var activeEntries = state.allEntries.filter(function (x) { return !x.isDeleted; });
             var fyFiltered = activeEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
             var filtered = targetMo === 'ALL'
@@ -4188,69 +4292,6 @@
                 .filter(function (x) { return getEntryMonth(x) === mo; })
                 .reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
             });
-          } else if (state.dashboardData) {
-            var d = state.dashboardData;
-            if (targetMo === 'ALL') {
-              var sum = d.summary || {};
-              entriesCount = sum.orderCount || 0;
-              totalPo = sum.totalPoValue || 0;
-              totalProduct = sum.totalProductValue || 0;
-              totalSales = sum.totalValue || 0;
-              totalGst = sum.totalGstValue || 0;
-              commPctVal = sum.totalCommissionValuePct || 0;
-              totalComm = sum.totalCommission || 0;
-              pendingCnt = sum.pendingCount || 0;
-              pendingAmt = sum.pendingValue || 0;
-              collectedAmt = sum.collectedValue || 0;
-            } else {
-              var mb = (d.monthlyBreakdown && d.monthlyBreakdown[targetMo]) || {};
-              entriesCount = mb.orderCount || 0;
-              totalPo = mb.totalPoValue || 0;
-              totalProduct = mb.totalProductValue || 0;
-              totalSales = mb.totalValue || 0;
-              totalGst = mb.totalGstValue || 0;
-              commPctVal = mb.totalCommissionValuePct || 0;
-              totalComm = mb.totalCommission || 0;
-              pendingCnt = mb.pendingCount || 0;
-              pendingAmt = mb.pendingValue || 0;
-              collectedAmt = mb.collectedValue || 0;
-            }
-
-            var repBreakdown = d.repBreakdown || [];
-            repRowsHtml = repBreakdown.map(function (sp) {
-              var sVal = 0, cVal = 0, pVal = 0, count = 0;
-              if (targetMo === 'ALL') {
-                count = sp.orderCount || 0;
-                sVal = sp.totalValue || 0;
-                cVal = sp.totalCommission || 0;
-                pVal = sp.pendingValue || 0;
-              } else {
-                var stat = (sp.monthly && sp.monthly[targetMo]) || { orderCount: 0, totalValue: 0, totalCommission: 0, pendingValue: 0 };
-                count = stat.orderCount || 0;
-                sVal = stat.totalValue || 0;
-                cVal = stat.totalCommission || 0;
-                pVal = stat.pendingValue || 0;
-              }
-              var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
-              var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
-              return (
-                '<tr>' +
-                '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
-                '<td class="py-2 px-2 text-right font-medium text-slate-700">' + count + '</td>' +
-                '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
-                '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
-                '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
-                '</tr>'
-              );
-            }).join('');
-
-            if (Array.isArray(d.monthlySales) && d.monthlySales.length === FY_MONTHS.length) {
-              monthlyTotals = d.monthlySales;
-            } else {
-              monthlyTotals = FY_MONTHS.map(function (mo) {
-                return (d.monthlyBreakdown && d.monthlyBreakdown[mo]) ? d.monthlyBreakdown[mo].totalValue : 0;
-              });
-            }
           }
 
           if ($('kpiPoVal')) $('kpiPoVal').textContent = fmtINRCompact(totalPo);
@@ -4462,15 +4503,20 @@
 
           var curStart = fyStartYear(getCurrentFY());
           var fySet = {};
-          for (var f = curStart - 1; f <= curStart + 5; f++) {
+          for (var f = curStart - 4; f <= curStart + 2; f++) {
             fySet['FY ' + String(f).slice(-2) + '-' + String(f + 1).slice(-2)] = true;
+          }
+          if (Array.isArray(state.availableFYs)) {
+            state.availableFYs.forEach(function (fy) {
+              if (fy) fySet[fy] = true;
+            });
           }
           state.allEntries.forEach(function (e) {
             var mo = getEntryMonth(e);
             var yr = getEntryYear(e);
             if (mo && yr) fySet[getFYFromMonthYear(mo, yr)] = true;
           });
-          var fys = Object.keys(fySet).sort();
+          var fys = Object.keys(fySet).sort().reverse();
           var fyHtml = fys.map(function (fy) {
             return '<option value="' + fy + '">' + fy + '</option>';
           }).join('');
@@ -4984,7 +5030,11 @@
         $('month').addEventListener('change', checkPIDuplicate);
         $('year').addEventListener('change', checkPIDuplicate);
         $('refreshBtn').addEventListener('click', function () {
-          syncData(true, { skipCache: true, fy: state.dashFY || getCurrentFY(), all: false });
+          var targetFy = state.dashFY || getCurrentFY();
+          if (state.dashboardsByFy) {
+            delete state.dashboardsByFy[targetFy];
+          }
+          syncData(true, { skipCache: true, fy: targetFy, all: targetFy === 'ALL' });
         });
         window.addEventListener('online', function () {
           updateConnectionStatus();

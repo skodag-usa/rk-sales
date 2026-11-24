@@ -147,10 +147,10 @@
 ## Client-Side Stable Request ID & Idempotency
 
 - Decision: Unique response IDs (`RK-{timestamp}-{random}`) are generated client-side before dispatching the request to Apps Script.
-- Context: If a network timeout or dropped connection occurs after the server writes the row but before the client receives the response, retrying the save could result in duplicate rows.
+- Context: If a network timeout or dropped connection occurs after the server writes the row but before the client receives the response, retrying the save could result in duplicate rows. Furthermore, new entry submissions with client-generated IDs must not be falsely treated as edits of non-existent rows.
 - Behavior:
-  - In `Index.html`, `#salesForm` submit listener sets `$('responseId').value` before calling `google.script.run` or queueing in offline `pendingSync`.
-  - In `Code.gs`, `saveEntry` inspects `findEntryById_`. If an entry with that ID already exists, it performs an in-place update rather than inserting a duplicate record.
+  - In `Index.html`, `#salesForm` submits `stableId = isEdit ? currentEditId : ('RK-' + Date.now() + '-' + Math.floor(1000 + Math.random() * 9000))`. For new entries, `$('responseId').value` remains empty in the DOM so the form stays cleanly in 'New Entry' mode, and passes `isEdit: false`.
+  - In `Code.gs`, `saveEntry` checks `isExplicitEdit = (payload.isEdit === true || payload.isEdit === 'true' || Boolean(payload.originalMonthYear))`. If `isExplicitEdit && id && !existingEntry`, it throws `'Entry ' + id + ' was not found.'`. If it is not an explicit edit and `existingEntry` is null, it inserts a new row using that client-generated ID (`status: 'CREATED'`). If `existingEntry` already exists (e.g. on a retried save), it performs an idempotent in-place update (`status: 'UPDATED'`) rather than creating a duplicate row.
 
 ## Two-Phase Recoverable Month Transfer
 
@@ -184,5 +184,20 @@
   - Live Calculation: `#liveCalcGrid` switches to a 5-column responsive grid displaying `Comm 1 (P1 % on ₹X)` and `Comm 2 (P2 % on ₹Y)` alongside GST and Total Value.
   - Persistence: `savedRec` preserves `commP1ProductValue`, `commP1Pct`, `commP2ProductValue`, and `commP2Pct`.
   - Form Repopulation (`loadEntryForEdit`): Reconstructs `commP1ProductValue` and `commP2ProductValue` via algebraic solver fallback (`calcP1 = (commVal - r2*pv)/(r1 - r2)`) if an entry is loaded from a raw sheet row lacking explicit split fields.
+
+## Multi-Year Dashboard Caching & Independent Aggregate Rendering
+
+- Decision: Multi-year dashboard navigation (`FY 26-27`, `FY 25-26`, historical years, and `ALL`) uses client-side per-FY caching (`state.dashboardsByFy[fy]`) and renders directly from server-computed aggregates (`summary`, `kpi`, `monthlyBreakdown`, `monthlySales`, `repBreakdown`).
+- Context: In high-volume mode, `getDashboardData` returns lean responses with precalculated aggregates and `allEntries: []`. When switching years or when `state.allEntries` contained entries solely from the active financial year, `renderDashboard()` previously branched into calculating from `allEntries`, filtering to zero records and overwriting KPI cards, rep breakdowns, and monthly charts with zeroes. Furthermore, global `state.loadedFys[fy]` prevented re-fetching when toggling back and forth across years.
+- Behavior:
+  - Backend (`Code.gs`):
+    - `getAvailableFYs_(ss)` dynamically scans all month tabs (`MMM-YYYY`) in the Google Sheet and provides `availableFYs` in boot payloads and dashboard responses.
+    - `getDashboardDataWithSS_` and `buildDashboardData_` properly treat `options.fy === 'ALL'` and `options.all === true` uniformly, aggregating all tabs across all years.
+  - Frontend (`Index.html`):
+    - `state.dashboardsByFy` caches each retrieved year's dashboard aggregates.
+    - `dashFySelect` change listener immediately displays cached data if available; if not cached, it triggers `syncData(false, { fy: targetFy, all: targetFy === 'ALL' })`.
+    - `renderDashboard()` resolves aggregates from `curData` (`state.dashboardData` or `state.dashboardsByFy[state.dashFY]`), rendering KPI cards, rep breakdowns, and monthly sales bar charts directly from server aggregates. It falls back to calculating from `state.allEntries` only in local preview or offline modes when server aggregates are absent.
+    - Saving or deleting an entry invalidates `state.dashboardsByFy = {}`, ensuring fresh aggregates are retrieved when navigating between years.
+    - Manual `#refreshBtn` click purges the active year from `state.dashboardsByFy` and executes a cache-bypassed sync (`skipCache: true`).
 
 Source: `Code.gs`, `AGENTS.md`, `docs/superpowers/plans/`.

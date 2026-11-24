@@ -2,7 +2,7 @@
 
 ## Last verified commit
 
-- `9de95a2` ("feat: add party lookup support and test suite infrastructure") + high-volume performance modifications (lean save decoupled from full-FY dashboard rebuild, two-phase recoverable month transfer, client-side request ID idempotency, lightweight aggregate indexing), restored dynamic sheet formulas (Col 1 Sr No, Col 17 GST, Col 18 Total Value, Col 20 Commission %, Col 22 Commission Value %, Col 23 Total Commission, and `repairSheetFormulas`), and Multi-Commission Split P + P calculation & persistence fixes.
+- `9de95a2` ("feat: add party lookup support and test suite infrastructure") + high-volume performance modifications (lean save decoupled from full-FY dashboard rebuild, two-phase recoverable month transfer, client-side request ID idempotency, lightweight aggregate indexing), restored dynamic sheet formulas (Col 1 Sr No, Col 17 GST, Col 18 Total Value, Col 20 Commission %, Col 22 Commission Value %, Col 23 Total Commission, and `repairSheetFormulas`), Multi-Commission Split P + P calculation & persistence fixes, and multi-year dashboard caching & independent aggregate rendering.
 
 ## Status
 

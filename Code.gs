@@ -186,6 +186,7 @@ function bootJson_(editId) {
       payload.salesPersons = getSalesPersonsLookup_(ss);
       payload.regions = getRegionsLookup_(ss);
       payload.parties = getPartiesLookup_(ss);
+      payload.availableFYs = getAvailableFYs_(ss);
     }
   } catch (e) {
     // Graceful fallback if spreadsheet is not immediately available during boot
@@ -1437,7 +1438,8 @@ function saveEntry(payload) {
     var id = sanitizeEditId_(requestedId);
     var hintMY = payload.originalMonthYear || payload.monthYear || '';
     var existingEntry = id ? findEntryById_(ss, id, hintMY) : null;
-    if (id && !existingEntry) {
+    var isExplicitEdit = (payload.isEdit === true || payload.isEdit === 'true' || Boolean(payload.originalMonthYear));
+    if (isExplicitEdit && id && !existingEntry) {
       throw new Error('Entry ' + id + ' was not found.');
     }
 
@@ -1602,6 +1604,7 @@ function saveEntry(payload) {
 
     var saveResult = {
       ok: true,
+      status: existingEntry ? 'UPDATED' : 'CREATED',
       isEdit: !!existingEntry,
       srNo: sr,
       responseId: id,
@@ -1873,7 +1876,7 @@ function getDashboardData(options) {
 
 function getDashboardDataWithSS_(ss, options) {
   options = options || {};
-  var isAll = options.all === true;
+  var isAll = options.all === true || options.fy === 'ALL';
   var targetFY = isAll ? 'ALL' : (options.fy || getCurrentFY_(ss));
   var cacheKey = 'DASHBOARD_' + targetFY;
 
@@ -1891,11 +1894,12 @@ function getDashboardDataWithSS_(ss, options) {
     } catch (e) {}
   }
 
-  // Metadata lookups (salesPersons, regions, and parties) are always freshly retrieved
+  // Metadata lookups (salesPersons, regions, parties, and availableFYs) are always freshly retrieved
   // so edits to Lookup or Region sheets reflect immediately without waiting for cache TTL.
   var freshSalesPersons = getSalesPersonsLookup_(ss);
   var freshRegions = getRegionsLookup_(ss);
   var freshParties = getPartiesLookup_(ss);
+  var freshFYs = getAvailableFYs_(ss);
 
   if (cache && !options.skipCache) {
     try {
@@ -1905,6 +1909,7 @@ function getDashboardDataWithSS_(ss, options) {
         parsed.salesPersons = freshSalesPersons;
         parsed.regions = freshRegions;
         parsed.parties = freshParties;
+        parsed.availableFYs = freshFYs;
         return parsed;
       }
     } catch (e) {}
@@ -1914,6 +1919,7 @@ function getDashboardDataWithSS_(ss, options) {
   data.salesPersons = freshSalesPersons;
   data.regions = freshRegions;
   data.parties = freshParties;
+  data.availableFYs = freshFYs;
 
   if (cache) {
     try {
@@ -1973,9 +1979,39 @@ function getCurrentFY_(ss) {
   return latestFY;
 }
 
+function getAvailableFYs_(ss) {
+  var fySet = {};
+  var now = new Date();
+  var curFY = getFYFromMonthYear_(CAL_MONTHS[now.getMonth()], now.getFullYear());
+  if (curFY) fySet[curFY] = true;
+
+  if (ss && typeof ss.getSheets === 'function') {
+    var sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) {
+      var name = sheets[i].getName();
+      if (CORE_SHEETS[name]) continue;
+      var m = name.toUpperCase().match(/^([A-Z]{3})-(\d{4})$/);
+      if (m) {
+        var fy = getFYFromMonthYear_(m[1], m[2]);
+        if (fy) fySet[fy] = true;
+      }
+    }
+  }
+
+  var fys = Object.keys(fySet);
+  fys.sort(function (a, b) {
+    var ma = a.match(/\d+/);
+    var mb = b.match(/\d+/);
+    var ya = ma ? parseInt(ma[0], 10) : 0;
+    var yb = mb ? parseInt(mb[0], 10) : 0;
+    return yb - ya;
+  });
+  return fys;
+}
+
 function buildDashboardData_(ss, options) {
   options = options || {};
-  var isAll = options.all === true;
+  var isAll = options.all === true || options.fy === 'ALL';
   var targetFY = isAll ? 'ALL' : (options.fy || getCurrentFY_(ss));
   var records = getAllMonthRecords_(ss, isAll ? null : targetFY);
 
@@ -2128,6 +2164,7 @@ function buildDashboardData_(ss, options) {
     salesPersons: repList,
     regions: getRegionsLookup_(ss),
     parties: getPartiesLookup_(ss),
+    availableFYs: getAvailableFYs_(ss),
     totalCount: records.length,
     activeCount: activeCount,
     last10: records.filter(function (x) { return !x.isDeleted; }).slice(0, 10),

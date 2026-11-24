@@ -375,6 +375,7 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   assert.ok(elements['transNextBtn'], 'transNextBtn must exist');
   assert.ok(elements['transPageInfo'], 'transPageInfo must exist');
 
+  app.state.transMonth = 'ALL';
   app.state.transPageSize = 2;
   app.renderOfflineTransactionsPage(1);
   assert.strictEqual(app.state.transPage, 1);
@@ -435,6 +436,60 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   app.renderDashboard();
   assert.strictEqual(elements['kpiEntries'].textContent, '50 entries', 'Dashboard month entries count should come from monthlyBreakdown[NOV].orderCount');
   console.log('✓ Dashboard rendering from precalculated dashboardData verified.');
+
+  // Test 11d: Verify Dashboard loading other year data when allEntries contains only current year entries
+  console.log('Test 11d: Verifying Dashboard multi-year switching with non-matching allEntries...');
+  app.state.allEntries = [
+    { srNo: 1, responseId: 'resp-2627', month: 'NOV', year: '2026', monthYear: 'NOV-2026', salesPerson: 'RK', totalValue: 1000, isDeleted: false }
+  ];
+  // Other year payload (FY 25-26)
+  const fy2526Data = {
+    fy: 'FY 25-26',
+    summary: {
+      orderCount: 88,
+      totalPoValue: 250000,
+      totalProductValue: 200000,
+      totalGstValue: 36000,
+      totalValue: 236000,
+      totalCommissionValuePct: 7500,
+      totalCommission: 12000,
+      pendingCount: 5,
+      pendingValue: 15000,
+      collectedValue: 221000
+    },
+    monthlyBreakdown: {},
+    repBreakdown: [
+      { code: 'RK', name: 'Rahul Kodag', role: 'ADMIN', active: true, orderCount: 88, totalValue: 236000, totalCommission: 12000, pendingValue: 15000, monthly: {} }
+    ],
+    monthlySales: [5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000]
+  };
+  app.applyDashboardPayload(fy2526Data);
+  app.state.dashFY = 'FY 25-26';
+  app.state.dashMonth = 'ALL';
+  app.renderDashboard();
+  assert.strictEqual(elements['kpiEntries'].textContent, '88 entries', 'Dashboard should display FY 25-26 orderCount (88) even if allEntries only contains FY 26-27 entries');
+  assert.ok(elements['dashActiveMonthLabel'].textContent.includes('FY 25-26'), 'Active month label should show FY 25-26');
+  assert.ok(app.state.dashboardsByFy['FY 25-26'], 'dashboardsByFy should cache FY 25-26 data');
+
+  // Verify switching back to FY 26-27 uses cached dashboardsByFy
+  const fy2627Data = {
+    fy: 'FY 26-27',
+    summary: { orderCount: 150, totalValue: 472000, totalPoValue: 500000, totalProductValue: 400000, totalGstValue: 72000, totalCommissionValuePct: 15000, totalCommission: 25000, pendingCount: 30, pendingValue: 120000, collectedValue: 352000 },
+    monthlyBreakdown: {},
+    repBreakdown: [{ code: 'RK', name: 'Rahul Kodag', role: 'ADMIN', active: true, orderCount: 150, totalValue: 472000, totalCommission: 25000, pendingValue: 120000, monthly: {} }],
+    monthlySales: [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 141600, 10000, 10000, 10000]
+  };
+  app.applyDashboardPayload(fy2627Data);
+  assert.ok(app.state.dashboardsByFy['FY 26-27'], 'dashboardsByFy should cache FY 26-27 data');
+  assert.ok(app.state.dashboardsByFy['FY 25-26'], 'dashboardsByFy should retain FY 25-26 cache');
+
+  // Simulate change event on dashFySelect to FY 25-26
+  elements['dashFySelect'].value = 'FY 25-26';
+  const changeListeners = elements['dashFySelect'].listeners['change'] || [];
+  changeListeners.forEach(fn => fn());
+  assert.strictEqual(app.state.dashFY, 'FY 25-26');
+  assert.strictEqual(elements['kpiEntries'].textContent, '88 entries', 'Selecting cached FY 25-26 should render 88 entries immediately from cache');
+  console.log('✓ Multi-year dashboard loading and per-year caching verified.');
 
   // Test 12: Party name autocomplete: suppressed until 2 characters, enabled at 2+ characters
   console.log('Test 12: Verifying party name autocomplete behavior (< 2 chars suppressed, >= 2 chars active)...');

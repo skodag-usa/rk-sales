@@ -1173,6 +1173,90 @@ assert.ok(totalValFormula.includes('ROUND(O') && totalValFormula.includes('+Q'),
 assert.ok(totalCommFormula.includes('ROUND(V'), 'Total Commission formula must reference Commission Value %');
 console.log('✓ Dynamic formulas and repairSheetFormulas verified.');
 
+// Test 32: Verifying saveEntry with client-generated responseId for new entries (idempotency & retry safe)
+console.log('Test 32: Verifying saveEntry with client-generated responseId for new entries...');
+const clientGenId = 'RK-' + Date.now() + '-9999';
+const newEntryWithIdRes = sandbox.saveEntry({
+  authCode: 'RK',
+  authPin: '1234',
+  responseId: clientGenId,
+  isEdit: false,
+  month: 'NOV',
+  year: '2026',
+  monthYear: 'NOV-2026',
+  salesPerson: 'RK',
+  partyName: 'Client Idempotent Ltd',
+  region: 'R - Pune',
+  poNo: 'PO-CLIENT-ID-1',
+  poDate: '2026-11-24',
+  piNo: 'PI-2627-CLIENT-1',
+  productKeyword: 'LS',
+  productName: 'Laser Unit',
+  poValue: 5000,
+  productValue: 5000,
+  freightCharges: 0,
+  commissionType: 'P',
+  commissionPct: 5,
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+});
+assert.strictEqual(newEntryWithIdRes.ok, true);
+assert.strictEqual(newEntryWithIdRes.isEdit, false);
+assert.strictEqual(newEntryWithIdRes.responseId, clientGenId);
+assert.strictEqual(newEntryWithIdRes.status, 'CREATED');
+
+// Retrying the exact same submission with the same client-generated ID should succeed idempotently without error
+const retryEntryRes = sandbox.saveEntry({
+  authCode: 'RK',
+  authPin: '1234',
+  responseId: clientGenId,
+  isEdit: false,
+  month: 'NOV',
+  year: '2026',
+  monthYear: 'NOV-2026',
+  salesPerson: 'RK',
+  partyName: 'Client Idempotent Ltd',
+  region: 'R - Pune',
+  poNo: 'PO-CLIENT-ID-1',
+  poDate: '2026-11-24',
+  piNo: 'PI-2627-CLIENT-1',
+  productKeyword: 'LS',
+  productName: 'Laser Unit',
+  poValue: 5000,
+  productValue: 5000,
+  freightCharges: 0,
+  commissionType: 'P',
+  commissionPct: 5,
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+});
+assert.strictEqual(retryEntryRes.ok, true);
+assert.strictEqual(retryEntryRes.isEdit, true); // Found existing entry on retry!
+assert.strictEqual(retryEntryRes.responseId, clientGenId);
+assert.strictEqual(retryEntryRes.status, 'UPDATED');
+
+// But attempting an explicit edit (isEdit: true) on a non-existent ID should throw "was not found"
+assert.throws(() => {
+  sandbox.saveEntry({
+    authCode: 'RK',
+    authPin: '1234',
+    responseId: 'RK-NONEXISTENT-9999',
+    isEdit: true,
+    monthYear: 'NOV-2026',
+    salesPerson: 'RK',
+    partyName: 'Ghost Ltd',
+    region: 'R - Pune',
+    poNo: 'PO-GHOST',
+    poDate: '2026-11-24',
+    productKeyword: 'LS',
+    productValue: 1000,
+    commissionType: 'P',
+    paymentStatus: 'RCD',
+    wbBilling: 'B'
+  });
+}, /was not found/, 'Explicit edit of non-existent entry must throw was not found');
+console.log('✓ saveEntry with client-generated responseId, idempotency retry, and explicit edit check verified.');
+
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');
 console.log('========================================');
