@@ -43,7 +43,9 @@ const requiredIds = [
   'commMultiSection', 'commMultiComboBadge', 'commAddPBtn', 'commAddFBtn',
   'commPCountBadge', 'commFCountBadge', 'commAllocBar', 'commAllocText', 'commPartsContainer',
   // New Transactions makeover & Delete entry elements
-  'deleteEntryBtn', 'transMonthSelect', 'transYearSelect', 'transMonthHint', 'piDuplicateWarning'
+  'deleteEntryBtn', 'transMonthSelect', 'transYearSelect', 'transMonthHint', 'piDuplicateWarning',
+  // On-demand pagination elements
+  'transPageSizeSelect', 'transPagination', 'transPrevBtn', 'transNextBtn', 'transPageInfo'
 ];
 
 requiredIds.forEach(id => {
@@ -274,6 +276,51 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   assert.strictEqual(totalComm, 13, 'Total commission must be 10 + 3 = 13');
   console.log('✓ P + F split calculation verified.');
 
+  // Test 9b: P + P dual percentage split calculation & live UI
+  console.log('Test 9b: Verifying P + P dual percentage split calculation and form repopulation...');
+  elements['productValue'].value = '300';
+  elements['freightCharges'].value = '0';
+  app.state.selectedCommType = 'P + P';
+  elements['commP1ProductValue'].value = '200';
+  elements['commP1Pct'].value = '5';
+  elements['commP2ProductValue'].value = '100';
+  elements['commP2Pct'].value = '2.5';
+  app.updateLiveCalc();
+  assert.strictEqual(elements['calcCommPct'].textContent, '₹10.00', 'Comm 1 must be 5% on 200 = ₹10.00');
+  assert.strictEqual(elements['calcCommFix'].textContent, '₹2.50', 'Comm 2 must be 2.5% on 100 = ₹2.50');
+  assert.strictEqual(elements['calcCommTotal'].textContent, '₹12.50', 'Total Comm must be ₹12.50');
+  assert.ok(elements['calcCommPctLabel'].textContent.includes('5% on ₹200.00'), 'Comm 1 label must reflect 5% on ₹200.00');
+  assert.ok(elements['calcCommFixLabel'].textContent.includes('2.5% on ₹100.00'), 'Comm 2 label must reflect 2.5% on ₹100.00');
+
+  // Verify loadEntryForEdit for P + P entry
+  const ppEntry = {
+    responseId: 'RESP-PP-TEST',
+    salesPerson: 'RK',
+    partyName: 'PP Enterprise',
+    region: 'R - Pune',
+    poNo: 'PO-PP-1',
+    productKeyword: 'LS',
+    productValue: 300,
+    freightCharges: 0,
+    commissionType: 'P + P',
+    commP1ProductValue: 200,
+    commP1Pct: 5,
+    commP2ProductValue: 100,
+    commP2Pct: 2.5,
+    commissionValuePct: 12.5,
+    totalCommission: 12.5,
+    paymentTerms: '30 Days',
+    paymentStatus: 'PENDING',
+    wbBilling: 'B'
+  };
+  app.loadEntryForEdit(ppEntry);
+  assert.strictEqual(app.state.selectedCommType, 'P + P');
+  assert.strictEqual(elements['commP1ProductValue'].value, 200);
+  assert.strictEqual(elements['commP1Pct'].value, 5);
+  assert.strictEqual(elements['commP2ProductValue'].value, 100);
+  assert.strictEqual(elements['commP2Pct'].value, 2.5);
+  console.log('✓ P + P dual percentage split calculation and form repopulation verified.');
+
   // Test 10: Multi-part combination P + P + P + F calculation
   console.log('Test 10: Verifying multi-part P + P + P + F calculation...');
   app.state.multiParts = [
@@ -319,6 +366,75 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   assert.ok(elements['recentList'].innerHTML.includes('CANCELLED'), 'Soft-deleted transactions must display CANCELLED badge');
   assert.ok(elements['recentList'].innerHTML.includes('Struck Out'), 'Soft-deleted transactions must display Struck Out label');
   console.log('✓ Transactions month filter, descending sort, and card delete button verified.');
+
+  // Test 11b: Verify on-demand pagination controls in Transactions view
+  console.log('Test 11b: Verifying on-demand pagination controls in Transactions view...');
+  assert.ok(elements['transPageSizeSelect'], 'transPageSizeSelect must exist');
+  assert.ok(elements['transPagination'], 'transPagination must exist');
+  assert.ok(elements['transPrevBtn'], 'transPrevBtn must exist');
+  assert.ok(elements['transNextBtn'], 'transNextBtn must exist');
+  assert.ok(elements['transPageInfo'], 'transPageInfo must exist');
+
+  app.state.transPageSize = 2;
+  app.renderOfflineTransactionsPage(1);
+  assert.strictEqual(app.state.transPage, 1);
+  assert.ok(elements['transPageInfo'].innerHTML.includes('Page <strong class="text-blue-900">1</strong> of <strong>2</strong>'), 'Pagination text must show Page 1 of 2');
+  assert.strictEqual(elements['transPrevBtn'].disabled, true, 'Prev button should be disabled on page 1');
+  assert.strictEqual(elements['transNextBtn'].disabled, false, 'Next button should be enabled on page 1 of 2');
+
+  app.renderOfflineTransactionsPage(2);
+  assert.strictEqual(app.state.transPage, 2);
+  assert.strictEqual(elements['transPrevBtn'].disabled, false, 'Prev button should be enabled on page 2');
+  assert.strictEqual(elements['transNextBtn'].disabled, true, 'Next button should be disabled on last page');
+  console.log('✓ On-demand pagination controls and state verified.');
+
+  // Test 11c: Verify Dashboard rendering with empty allEntries and precalculated dashboardData
+  console.log('Test 11c: Verifying Dashboard rendering from precalculated dashboardData counts...');
+  app.state.allEntries = [];
+  app.state.dashboardData = {
+    fy: 'FY 26-27',
+    summary: {
+      orderCount: 150,
+      totalPoValue: 500000,
+      totalProductValue: 400000,
+      totalGstValue: 72000,
+      totalValue: 472000,
+      totalCommissionValuePct: 15000,
+      totalCommission: 25000,
+      pendingCount: 30,
+      pendingValue: 120000,
+      collectedValue: 352000
+    },
+    monthlyBreakdown: {
+      'NOV': {
+        orderCount: 50,
+        totalPoValue: 150000,
+        totalProductValue: 120000,
+        totalGstValue: 21600,
+        totalValue: 141600,
+        totalCommissionValuePct: 4500,
+        totalCommission: 8000,
+        pendingCount: 10,
+        pendingValue: 35000,
+        collectedValue: 106600
+      }
+    },
+    repBreakdown: [
+      { code: 'RK', name: 'Rahul Kodag', role: 'ADMIN', active: true, orderCount: 100, totalValue: 300000, totalCommission: 18000, pendingValue: 80000, monthly: { 'NOV': { orderCount: 35, totalValue: 100000, totalCommission: 6000, pendingValue: 25000 } } }
+    ],
+    monthlySales: [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 141600, 10000, 10000, 10000]
+  };
+  app.state.dashFY = 'FY 26-27';
+  app.state.dashMonth = 'ALL';
+  app.renderDashboard();
+  assert.strictEqual(elements['kpiEntries'].textContent, '150 entries', 'Dashboard entries count should come from summary.orderCount');
+  assert.ok(elements['salesPersonTable'].innerHTML.includes('Rahul'), 'Rep breakdown should render from repBreakdown');
+
+  // Test selecting a specific month in Dashboard
+  app.state.dashMonth = 'NOV';
+  app.renderDashboard();
+  assert.strictEqual(elements['kpiEntries'].textContent, '50 entries', 'Dashboard month entries count should come from monthlyBreakdown[NOV].orderCount');
+  console.log('✓ Dashboard rendering from precalculated dashboardData verified.');
 
   // Test 12: Party name autocomplete: suppressed until 2 characters, enabled at 2+ characters
   console.log('Test 12: Verifying party name autocomplete behavior (< 2 chars suppressed, >= 2 chars active)...');

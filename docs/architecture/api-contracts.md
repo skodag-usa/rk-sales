@@ -20,8 +20,12 @@
 
 - `getSalesPersonsLookup_()` / `getSalesPersonsInternal_()` → lookup/internal user lists (`Code.gs:335` / `244`).
 - `getAdminEmails_()` → admin recipient emails (`Code.gs:351`).
-- `getDashboardData()` → dashboard payload (`Code.gs:896`).
-- `saveEntry(payload)` → `{ ok, message }`; upsert into month tab via `upsert_` (`Code.gs:722`, `Code.gs:995`).
+- `getDashboardData(options)` → precomputed aggregates (`summary`, `kpi`, `monthlyBreakdown`, `monthlySales`, `repBreakdown`) with `allEntries: []` by default (`Code.gs:896`).
+- `getMonthTransactions(options)` → on-demand paginated transactions for a specific month tab (`records`, `page`, `pageSize`, `totalCount`, `totalPages`) (`Code.gs:1150`).
+- `saveEntry(payload)` → lean response `{ ok: true, status: 'CREATED'|'UPDATED', entry: savedRec, perf: {...} }` (omits heavy `dashboard` payload unless `payload.includeDashboard === true`); upsert into month tab via `upsert_` (`Code.gs:1350`).
+- `deleteEntry(payload)` → lean response `{ ok: true, message, responseId, perf }` (omits heavy `dashboard` unless `payload.includeDashboard === true`); soft-deletes via `[DELETED]` remark, strikethrough, and KPI exclusion (`Code.gs:1650`).
+- `repairSheetFormulas(optSS)` → `{ ok: true, repairedRows: number }`; scans all month tabs and restores dynamic Excel/Sheets formulas for Sr. No. (`=ROW()-1`), GST, Total Value, Commission Value %, and Total Commission (`Code.gs:2288`).
+- `rebuildDashboardSheet(optSS)` → rebuilds `Dashboard` tab calculations and updates cache (`Code.gs:2361`).
 
 ### Reporting
 

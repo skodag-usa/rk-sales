@@ -656,10 +656,10 @@
       <!-- Month & Year Filters for Transactions -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 space-y-2">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Select Month</span>
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Filter Transactions</span>
           <span id="transMonthHint" class="text-[11px] text-blue-800 font-semibold">Current Month</span>
         </div>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-3 gap-2">
           <div>
             <label for="transMonthSelect" class="block text-[11px] font-semibold text-slate-600 mb-1">Month</label>
             <select id="transMonthSelect"
@@ -670,6 +670,15 @@
             <select id="transYearSelect"
               class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none"></select>
           </div>
+          <div>
+            <label for="transPageSizeSelect" class="block text-[11px] font-semibold text-slate-600 mb-1">Per Page</label>
+            <select id="transPageSizeSelect"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none">
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50" selected>50</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -677,6 +686,19 @@
         class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-600 focus:outline-none" />
 
       <div id="recentList" class="space-y-2.5"></div>
+
+      <!-- Pagination bar -->
+      <div id="transPagination" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-2.5 flex items-center justify-between gap-2">
+        <button id="transPrevBtn" type="button"
+          class="px-3 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition">
+          ← Prev
+        </button>
+        <span id="transPageInfo" class="text-xs font-medium text-slate-600 text-center">Page 1 of 1</span>
+        <button id="transNextBtn" type="button"
+          class="px-3 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition">
+          Next →
+        </button>
+      </div>
     </section>
 
     <!-- ==================== VIEW 3: MONTHLY DASHBOARD ==================== -->
@@ -1432,7 +1454,8 @@
         function saveEntries(entries) {
           if (!Array.isArray(entries)) return Promise.resolve();
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+            var toStore = entries.length > 300 ? entries.slice(0, 300) : entries;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
           } catch (e) { }
 
           if (!hasIDB) return Promise.resolve();
@@ -1767,6 +1790,13 @@
         dashMonth: currentCalMonth(),
         transMonth: currentCalMonth(),
         transYear: currentYear(),
+        transPage: 1,
+        transPageSize: 50,
+        transTotalPages: 1,
+        transTotalCount: 0,
+        transActiveCount: 0,
+        transCurrentRecords: [],
+        dashboardData: null,
         salesPersons: DEFAULT_SALES_PERSONS.slice(),
         regions: DEFAULT_REGIONS.slice(),
         parties: [],
@@ -2070,6 +2100,15 @@
           if (multiSec) multiSec.classList.add('hidden');
           fixedInput.disabled = true;
           fixedInput.value = '0';
+          var pv = toNum($('productValue').value);
+          if (pv > 0 && !$('commP1ProductValue').value && !$('commP2ProductValue').value) {
+            var p1Def = Math.round(pv * 0.6 * 100) / 100;
+            var p2Def = Math.round((pv - p1Def) * 100) / 100;
+            $('commP1ProductValue').value = p1Def;
+            $('commP2ProductValue').value = p2Def;
+          }
+          updateP1PillState();
+          updateP2PillState();
         } else if (ct === 'P + F') {
           if (stdSec) stdSec.classList.remove('hidden');
           if (splitSec) splitSec.classList.remove('hidden');
@@ -2794,9 +2833,9 @@
             fixLabel.textContent = (ct === 'P + F' && fixPv > 0) ? ('Fixed (' + fmtINR(fixPv) + ')') : 'Comm Fixed';
           }
 
-          // Adjust grid: 5 items for P+F, 4 otherwise
+          // Adjust grid: 5 items for P+F and P+P, 4 otherwise
           var grid = $('liveCalcGrid');
-          if (ct === 'P + F') {
+          if (ct === 'P + F' || ct === 'P + P') {
             grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3';
           } else {
             grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3';
@@ -2966,10 +3005,31 @@
           } else if ((entry.commissionType || 'P') === 'P + P') {
             $('commPctProductValue').value = '';
             $('commFixedProductValue').value = '';
-            $('commP1ProductValue').value = entry.commP1ProductValue || '';
-            $('commP1Pct').value = entry.commP1Pct !== undefined && entry.commP1Pct !== '' ? entry.commP1Pct : (entry.commissionPct || '5');
-            $('commP2ProductValue').value = entry.commP2ProductValue || '';
-            $('commP2Pct').value = entry.commP2Pct !== undefined && entry.commP2Pct !== '' ? entry.commP2Pct : '2.5';
+            var p1Val = entry.commP1ProductValue !== undefined && entry.commP1ProductValue !== '' ? entry.commP1ProductValue : '';
+            var p2Val = entry.commP2ProductValue !== undefined && entry.commP2ProductValue !== '' ? entry.commP2ProductValue : '';
+            var p1Rate = entry.commP1Pct !== undefined && entry.commP1Pct !== '' ? entry.commP1Pct : (entry.commissionPct || 5);
+            var p2Rate = entry.commP2Pct !== undefined && entry.commP2Pct !== '' ? entry.commP2Pct : 2.5;
+
+            var pv = toNum(entry.productValue);
+            var commVal = toNum(entry.commissionValuePct || entry.totalCommission);
+            if ((!p1Val || !p2Val) && pv > 0 && commVal > 0) {
+              var r1 = toNum(p1Rate) / 100;
+              var r2 = toNum(p2Rate) / 100;
+              if (r1 !== r2) {
+                var calcP1 = Math.round(((commVal - r2 * pv) / (r1 - r2)) * 100) / 100;
+                if (calcP1 >= 0 && calcP1 <= pv) {
+                  p1Val = calcP1;
+                  p2Val = Math.round((pv - calcP1) * 100) / 100;
+                }
+              }
+            }
+
+            $('commP1ProductValue').value = p1Val;
+            $('commP1Pct').value = p1Rate;
+            $('commP2ProductValue').value = p2Val;
+            $('commP2Pct').value = p2Rate;
+            updateP1PillState();
+            updateP2PillState();
             state.multiParts = [];
           } else if (Array.isArray(entry.commissionParts) && entry.commissionParts.length > 0) {
             $('commPctProductValue').value = '';
@@ -3034,7 +3094,12 @@
 
         // ---------- DATA SYNC (LIVE GAS OR PREVIEW) ----------
         function savePreviewStorage() {
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.allEntries)); } catch (e) { }
+          try {
+            var toStore = (state.allEntries && state.allEntries.length > 300)
+              ? state.allEntries.slice(0, 300)
+              : state.allEntries;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
+          } catch (e) { }
         }
 
         function loadPreviewStorage() {
@@ -3260,6 +3325,7 @@
 
         function applyDashboardPayload(data) {
           if (!data) return;
+          state.dashboardData = data;
           if (Array.isArray(data.salesPersons) && data.salesPersons.length) {
             state.salesPersons = data.salesPersons;
             populateLoginUserSelect();
@@ -3274,37 +3340,48 @@
             state.parties = data.parties;
           }
 
-          var incomingEntries = (Array.isArray(data.allEntries) ? data.allEntries : []).map(function (entry) {
-            return normalizeEntry(entry);
-          });
+          if (Array.isArray(data.allEntries) && data.allEntries.length > 0) {
+            var incomingEntries = data.allEntries.map(function (entry) {
+              return normalizeEntry(entry);
+            });
 
-          // Merge incoming entries with existing state.allEntries to preserve other FYs & offline entries
-          var map = {};
-          state.allEntries.forEach(function (e) {
-            var k = e.responseId || ('sr_' + e.srNo);
-            map[k] = e;
-          });
-          incomingEntries.forEach(function (e) {
-            var k = e.responseId || ('sr_' + e.srNo);
-            map[k] = e;
-          });
-          var merged = Object.keys(map).map(function (k) { return map[k]; });
-          merged.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
+            // Merge incoming entries with existing state.allEntries to preserve other FYs & offline entries
+            var map = {};
+            function entryKey(e) {
+              return e.responseId || ((e.monthYear || (getEntryMonth(e) + '-' + getEntryYear(e)) || '') + '_sr_' + e.srNo);
+            }
+            state.allEntries.forEach(function (e) {
+              map[entryKey(e)] = e;
+            });
+            incomingEntries.forEach(function (e) {
+              map[entryKey(e)] = e;
+            });
+            var merged = Object.keys(map).map(function (k) { return map[k]; });
+            merged.sort(function (a, b) { return (b.srNo || 0) - (a.srNo || 0); });
 
-          state.allEntries = merged;
+            state.allEntries = merged;
+            savePreviewStorage();
+            RKSalesDB.saveEntries(state.allEntries);
+          }
+
           state.last10 = (Array.isArray(data.last10) && data.last10.length)
             ? data.last10.map(function (e) { return normalizeEntry(e); })
             : state.allEntries.filter(function (e) { return !e.isDeleted; }).slice(0, 10);
-
-          savePreviewStorage();
-          RKSalesDB.saveEntries(state.allEntries);
 
           if (data.sheetUrl) {
             state.sheetUrl = data.sheetUrl;
             $('openSheetLink').href = data.sheetUrl;
           }
-          var activeTotal = state.allEntries.filter(function (e) { return !e.isDeleted; }).length;
-          $('recentCountBadge').textContent = activeTotal + ' active (' + state.allEntries.length + ' total)';
+          if (data.activeCount !== undefined && data.totalCount !== undefined) {
+            if ($('recentCountBadge')) {
+              $('recentCountBadge').textContent = data.activeCount + ' active (' + data.totalCount + ' total)';
+            }
+          } else {
+            var activeTotal = state.allEntries.filter(function (e) { return !e.isDeleted; }).length;
+            if ($('recentCountBadge')) {
+              $('recentCountBadge').textContent = activeTotal + ' active (' + state.allEntries.length + ' total)';
+            }
+          }
           populatePartyDatalist();
           populateDashFYOptions();
           populateTransFilterOptions();
@@ -3443,10 +3520,16 @@
           var fParts = (state.multiParts || []).filter(function (p) { return p.type === 'F'; });
           var totalFixedAmt = fParts.reduce(function (sum, f) { return sum + toNum(f.rate); }, 0);
 
+          var stableId = $('responseId').value.trim();
+          if (!stableId) {
+            stableId = 'RK-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+            $('responseId').value = stableId;
+          }
+
           var payload = {
             authCode: state.currentUser.code,
             authPin: state.currentUser.pin,
-            responseId: $('responseId').value.trim(),
+            responseId: stableId,
             month: mo,
             year: yr,
             monthYear: monthYear,
@@ -3504,7 +3587,19 @@
               .withSuccessHandler(function (res) {
                 btn.disabled = false;
                 btn.classList.remove('opacity-70');
-                applyDashboardPayload(res.dashboard);
+                if (res && res.entry) {
+                  var rec = normalizeEntry(res.entry);
+                  var idx = state.allEntries.findIndex(function (x) { return x.responseId === rec.responseId; });
+                  if (idx >= 0) state.allEntries[idx] = rec;
+                  else state.allEntries.unshift(rec);
+                  RKSalesDB.saveEntry(rec);
+                }
+                if (res && res.dashboard) {
+                  applyDashboardPayload(res.dashboard);
+                } else {
+                  state.dashboardDirty = true;
+                  renderRecentList();
+                }
                 resetForm(true);
                 showToast((res.isEdit ? 'Updated' : 'Saved') + ' Entry #' + res.srNo + ' (' + payload.salesPerson + ') → ' + res.monthYear + ' tab.');
               })
@@ -3651,19 +3746,64 @@
         }
 
         function renderRecentList() {
-          var q = ($('recentSearch').value || '').toLowerCase().trim();
-          var isAdm = (state.currentUser && state.currentUser.role === 'ADMIN');
-          var myCode = (state.currentUser ? state.currentUser.code.toUpperCase() : '');
+          updateTransHint();
+          var isLive = IS_LIVE_GAS && isAppOnline();
+
+          if (isLive) {
+            loadTransactionsPage(state.transPage || 1);
+          } else {
+            renderOfflineTransactionsPage(state.transPage || 1);
+          }
+        }
+
+        function loadTransactionsPage(page) {
+          state.transPage = Math.max(1, page || 1);
+          var container = $('recentList');
+          if (!container) return;
+
+          container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500 flex items-center justify-center gap-2">' +
+            '<span class="inline-block animate-pulse font-medium">Loading transactions (' + (state.transMonth || '') + ' ' + (state.transYear || '') + ', Page ' + state.transPage + ')...</span>' +
+            '</div>';
+
+          var pSize = state.transPageSize || 50;
+          var q = ($('recentSearch') ? $('recentSearch').value : '') || '';
+
+          google.script.run
+            .withSuccessHandler(function (res) {
+              if (!res || !res.ok) {
+                container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-rose-500">Could not load transactions.</div>';
+                return;
+              }
+              state.transPage = res.page;
+              state.transTotalPages = res.totalPages;
+              state.transTotalCount = res.totalCount;
+              state.transActiveCount = res.activeCount;
+              state.transCurrentRecords = (res.records || []).map(normalizeEntry);
+              renderTransactionsCards(state.transCurrentRecords, res);
+            })
+            .withFailureHandler(function (err) {
+              container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-rose-500">Error: ' + escapeHtml(err.message || err) + '</div>';
+            })
+            .getMonthTransactions({
+              month: state.transMonth,
+              year: state.transYear,
+              page: state.transPage,
+              pageSize: pSize,
+              search: q
+            });
+        }
+
+        function renderOfflineTransactionsPage(page) {
+          state.transPage = Math.max(1, page || 1);
+          var q = ($('recentSearch') ? $('recentSearch').value : '').toLowerCase().trim();
           var tMonth = state.transMonth || currentCalMonth();
           var tYear = state.transYear || currentYear();
+          var pageSize = state.transPageSize || 50;
 
-          updateTransHint();
-
-          // Load records in descending order
-          var sourceList = state.allEntries.slice();
+          var sourceList = (state.allEntries || []).slice();
           sourceList.sort(function (a, b) { return (Number(b.srNo) || 0) - (Number(a.srNo) || 0); });
 
-          var list = sourceList.filter(function (item) {
+          var filtered = sourceList.filter(function (item) {
             var iMo = getEntryMonth(item);
             var iYr = getEntryYear(item);
             if (tMonth !== 'ALL' && iMo !== tMonth) return false;
@@ -3677,12 +3817,42 @@
             return hay.indexOf(q) !== -1;
           });
 
-          var container = $('recentList');
-          var activeInList = list.filter(function (x) { return !x.isDeleted; }).length;
-          $('recentCountBadge').textContent = activeInList + ' active (' + list.length + ' shown)';
+          var total = filtered.length;
+          var activeCount = filtered.filter(function (x) { return !x.isDeleted; }).length;
+          var totalPages = Math.max(1, Math.ceil(total / pageSize));
+          if (state.transPage > totalPages) state.transPage = totalPages;
 
-          if (!list.length) {
+          var startIndex = (state.transPage - 1) * pageSize;
+          var slice = filtered.slice(startIndex, startIndex + pageSize);
+          state.transCurrentRecords = slice;
+
+          renderTransactionsCards(slice, {
+            page: state.transPage,
+            pageSize: pageSize,
+            totalPages: totalPages,
+            totalCount: total,
+            activeCount: activeCount,
+            startIndex: total > 0 ? (startIndex + 1) : 0,
+            endIndex: Math.min(total, startIndex + pageSize)
+          });
+        }
+
+        function renderTransactionsCards(list, meta) {
+          var container = $('recentList');
+          if (!container) return;
+
+          var tMonth = state.transMonth || currentCalMonth();
+          var tYear = state.transYear || currentYear();
+          var isAdm = (state.currentUser && state.currentUser.role === 'ADMIN');
+          var myCode = (state.currentUser ? state.currentUser.code.toUpperCase() : '');
+
+          if ($('recentCountBadge')) {
+            $('recentCountBadge').textContent = meta.activeCount + ' active (' + meta.totalCount + ' total)';
+          }
+
+          if (!list || !list.length) {
             container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">No transactions found for ' + (tMonth === 'ALL' ? 'all months' : tMonth) + ' ' + (tYear === 'ALL' ? '' : tYear) + '. Select another month or add a new entry.</div>';
+            if ($('transPagination')) $('transPagination').classList.add('hidden');
             return;
           }
 
@@ -3737,6 +3907,17 @@
               '</div>'
             );
           }).join('');
+
+          // Update Pagination Controls
+          var pag = $('transPagination');
+          if (pag) {
+            pag.classList.remove('hidden');
+            if ($('transPrevBtn')) $('transPrevBtn').disabled = (meta.page <= 1);
+            if ($('transNextBtn')) $('transNextBtn').disabled = (meta.page >= meta.totalPages);
+            if ($('transPageInfo')) {
+              $('transPageInfo').innerHTML = 'Page <strong class="text-blue-900">' + meta.page + '</strong> of <strong>' + meta.totalPages + '</strong> <span class="text-slate-400 font-normal">(' + meta.startIndex + '–' + meta.endIndex + ' of ' + meta.totalCount + ')</span>';
+            }
+          }
         }
 
         function handleDeleteEntry(targetId, targetBtn) {
@@ -3872,7 +4053,8 @@
           var editBtn = e.target.closest('button[data-edit-id]');
           if (editBtn) {
             var id = editBtn.getAttribute('data-edit-id');
-            var found = state.allEntries.find(function (x) { return String(x.responseId) === String(id); });
+            var found = (state.transCurrentRecords || []).find(function (x) { return String(x.responseId) === String(id); }) ||
+                        (state.allEntries || []).find(function (x) { return String(x.responseId) === String(id); });
             if (found) loadEntryForEdit(found);
             return;
           }
@@ -3937,77 +4119,154 @@
             $('dashTabsHint').textContent = 'Tabs: APR-' + sy + ' to MAR-' + (sy + 1);
           }
 
-          var activeEntries = state.allEntries.filter(function (x) { return !x.isDeleted; });
-          var fyFiltered = activeEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
-          var filtered = targetMo === 'ALL'
-            ? fyFiltered
-            : fyFiltered.filter(function (x) { return getEntryMonth(x) === targetMo; });
+          var hasLocalEntries = Array.isArray(state.allEntries) && state.allEntries.length > 0;
+          var totalSales = 0, totalComm = 0, totalProduct = 0, totalPo = 0, totalGst = 0, commPctVal = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0, entriesCount = 0;
+          var monthlyTotals = [];
+          var repRowsHtml = '';
 
-          var totalSales = 0, totalComm = 0, totalProduct = 0, totalPo = 0, totalGst = 0, pendingAmt = 0, pendingCnt = 0, collectedAmt = 0;
-          filtered.forEach(function (x) {
-            totalPo += toNum(x.poValue);
-            totalProduct += toNum(x.productValue);
-            totalSales += toNum(x.totalValue);
-            totalComm += toNum(x.totalCommission);
-            totalGst += toNum(x.gstValue);
-            if (x.paymentStatus === 'RCD') {
-              collectedAmt += toNum(x.totalValue);
+          if (hasLocalEntries) {
+            var activeEntries = state.allEntries.filter(function (x) { return !x.isDeleted; });
+            var fyFiltered = activeEntries.filter(function (x) { return entryMatchesFY(x, state.dashFY); });
+            var filtered = targetMo === 'ALL'
+              ? fyFiltered
+              : fyFiltered.filter(function (x) { return getEntryMonth(x) === targetMo; });
+
+            filtered.forEach(function (x) {
+              totalPo += toNum(x.poValue);
+              totalProduct += toNum(x.productValue);
+              totalSales += toNum(x.totalValue);
+              totalComm += toNum(x.totalCommission);
+              totalGst += toNum(x.gstValue);
+              commPctVal += toNum(x.commissionValuePct);
+              if (x.paymentStatus === 'RCD') {
+                collectedAmt += toNum(x.totalValue);
+              } else {
+                pendingAmt += toNum(x.totalValue);
+                pendingCnt += 1;
+              }
+            });
+            entriesCount = filtered.length;
+
+            // Dynamic Sales Person Table
+            var repMap = {};
+            var repList = [];
+            state.salesPersons.forEach(function (sp) {
+              if (sp.active !== false || filtered.some(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); })) {
+                repMap[sp.code] = sp;
+                repList.push(sp);
+              }
+            });
+            filtered.forEach(function (x) {
+              var repCode = String(x.salesPerson || '').trim();
+              if (repCode && !repMap[repCode]) {
+                var extra = { code: repCode, name: repCode, active: false };
+                repMap[repCode] = extra;
+                repList.push(extra);
+              }
+            });
+
+            repRowsHtml = repList.map(function (sp) {
+              var rows = filtered.filter(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); });
+              var sVal = rows.reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+              var cVal = rows.reduce(function (a, b) { return a + toNum(b.totalCommission); }, 0);
+              var pVal = rows.filter(function (x) { return x.paymentStatus !== 'RCD'; }).reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+              var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
+              var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
+              return (
+                '<tr>' +
+                '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
+                '<td class="py-2 px-2 text-right font-medium text-slate-700">' + rows.length + '</td>' +
+                '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
+                '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
+                '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
+                '</tr>'
+              );
+            }).join('');
+
+            monthlyTotals = FY_MONTHS.map(function (mo) {
+              return fyFiltered
+                .filter(function (x) { return getEntryMonth(x) === mo; })
+                .reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
+            });
+          } else if (state.dashboardData) {
+            var d = state.dashboardData;
+            if (targetMo === 'ALL') {
+              var sum = d.summary || {};
+              entriesCount = sum.orderCount || 0;
+              totalPo = sum.totalPoValue || 0;
+              totalProduct = sum.totalProductValue || 0;
+              totalSales = sum.totalValue || 0;
+              totalGst = sum.totalGstValue || 0;
+              commPctVal = sum.totalCommissionValuePct || 0;
+              totalComm = sum.totalCommission || 0;
+              pendingCnt = sum.pendingCount || 0;
+              pendingAmt = sum.pendingValue || 0;
+              collectedAmt = sum.collectedValue || 0;
             } else {
-              pendingAmt += toNum(x.totalValue);
-              pendingCnt += 1;
+              var mb = (d.monthlyBreakdown && d.monthlyBreakdown[targetMo]) || {};
+              entriesCount = mb.orderCount || 0;
+              totalPo = mb.totalPoValue || 0;
+              totalProduct = mb.totalProductValue || 0;
+              totalSales = mb.totalValue || 0;
+              totalGst = mb.totalGstValue || 0;
+              commPctVal = mb.totalCommissionValuePct || 0;
+              totalComm = mb.totalCommission || 0;
+              pendingCnt = mb.pendingCount || 0;
+              pendingAmt = mb.pendingValue || 0;
+              collectedAmt = mb.collectedValue || 0;
             }
-          });
+
+            var repBreakdown = d.repBreakdown || [];
+            repRowsHtml = repBreakdown.map(function (sp) {
+              var sVal = 0, cVal = 0, pVal = 0, count = 0;
+              if (targetMo === 'ALL') {
+                count = sp.orderCount || 0;
+                sVal = sp.totalValue || 0;
+                cVal = sp.totalCommission || 0;
+                pVal = sp.pendingValue || 0;
+              } else {
+                var stat = (sp.monthly && sp.monthly[targetMo]) || { orderCount: 0, totalValue: 0, totalCommission: 0, pendingValue: 0 };
+                count = stat.orderCount || 0;
+                sVal = stat.totalValue || 0;
+                cVal = stat.totalCommission || 0;
+                pVal = stat.pendingValue || 0;
+              }
+              var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
+              var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
+              return (
+                '<tr>' +
+                '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
+                '<td class="py-2 px-2 text-right font-medium text-slate-700">' + count + '</td>' +
+                '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
+                '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
+                '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
+                '</tr>'
+              );
+            }).join('');
+
+            if (Array.isArray(d.monthlySales) && d.monthlySales.length === FY_MONTHS.length) {
+              monthlyTotals = d.monthlySales;
+            } else {
+              monthlyTotals = FY_MONTHS.map(function (mo) {
+                return (d.monthlyBreakdown && d.monthlyBreakdown[mo]) ? d.monthlyBreakdown[mo].totalValue : 0;
+              });
+            }
+          }
 
           if ($('kpiPoVal')) $('kpiPoVal').textContent = fmtINRCompact(totalPo);
           if ($('kpiSalesVal')) $('kpiSalesVal').textContent = fmtINRCompact(totalProduct);
-          if ($('kpiEntries')) $('kpiEntries').textContent = filtered.length + (filtered.length === 1 ? ' entry' : ' entries');
+          if ($('kpiEntries')) $('kpiEntries').textContent = entriesCount + (entriesCount === 1 ? ' entry' : ' entries');
           if ($('kpiComm')) $('kpiComm').textContent = fmtINRCompact(totalComm);
           if ($('kpiProductVal')) $('kpiProductVal').textContent = 'Sales Value: ' + fmtINRCompact(totalProduct);
           if ($('kpiSales')) $('kpiSales').textContent = fmtINRCompact(totalSales);
-          if ($('kpiCommPct')) $('kpiCommPct').textContent = fmtINRCompact(filtered.reduce(function (sum, x) {
-            return sum + toNum(x.commissionValuePct);
-          }, 0));
+          if ($('kpiCommPct')) $('kpiCommPct').textContent = fmtINRCompact(commPctVal);
           if ($('kpiPendingAmt')) $('kpiPendingAmt').textContent = fmtINRCompact(pendingAmt);
           if ($('kpiPendingCnt')) $('kpiPendingCnt').textContent = pendingCnt + ' pending ' + (pendingCnt === 1 ? 'order' : 'orders');
           if ($('kpiCollectedAmt')) $('kpiCollectedAmt').textContent = fmtINRCompact(collectedAmt);
           if ($('kpiGstAmt')) $('kpiGstAmt').textContent = 'GST: ' + fmtINRCompact(totalGst);
 
-          // Dynamic Sales Person Table
-          var repMap = {};
-          var repList = [];
-          state.salesPersons.forEach(function (sp) {
-            if (sp.active !== false || filtered.some(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); })) {
-              repMap[sp.code] = sp;
-              repList.push(sp);
-            }
-          });
-          filtered.forEach(function (x) {
-            var repCode = String(x.salesPerson || '').trim();
-            if (repCode && !repMap[repCode]) {
-              var extra = { code: repCode, name: repCode, active: false };
-              repMap[repCode] = extra;
-              repList.push(extra);
-            }
-          });
-
           var tbody = $('salesPersonTable');
-          tbody.innerHTML = repList.map(function (sp) {
-            var rows = filtered.filter(function (x) { return String(x.salesPerson || '').toUpperCase().trim() === sp.code.toUpperCase(); });
-            var sVal = rows.reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
-            var cVal = rows.reduce(function (a, b) { return a + toNum(b.totalCommission); }, 0);
-            var pVal = rows.filter(function (x) { return x.paymentStatus !== 'RCD'; }).reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
-            var shortName = sp.name && sp.name !== sp.code ? sp.name.split(' ')[0] : '';
-            var roleTag = (sp.role === 'ADMIN') ? ' <span class="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Admin</span>' : '';
-            return (
-              '<tr>' +
-              '<td class="py-2 pr-2 font-semibold text-slate-800">' + escapeHtml(sp.code) + (shortName ? ' <span class="text-[10px] font-normal text-slate-400">' + escapeHtml(shortName) + '</span>' : '') + roleTag + '</td>' +
-              '<td class="py-2 px-2 text-right font-medium text-slate-700">' + rows.length + '</td>' +
-              '<td class="py-2 px-2 text-right font-semibold text-slate-900">' + fmtINRCompact(sVal) + '</td>' +
-              '<td class="py-2 px-2 text-right font-medium text-sky-700">' + fmtINRCompact(cVal) + '</td>' +
-              '<td class="py-2 pl-2 text-right font-medium text-rose-600">' + fmtINRCompact(pVal) + '</td>' +
-              '</tr>'
-            );
-          }).join('');
+          if (tbody) tbody.innerHTML = repRowsHtml;
 
           // Monthly Sales Chart
           $('chartTitle').textContent = fyLabel + ' Monthly Sales (Total Value ₹)';
@@ -4015,11 +4274,6 @@
             if (state.dashFY === 'ALL') return mo;
             var my = getMonthYearForFY(state.dashFY, mo);
             return mo + '-' + my.slice(-2);
-          });
-          var monthlyTotals = FY_MONTHS.map(function (mo) {
-            return fyFiltered
-              .filter(function (x) { return getEntryMonth(x) === mo; })
-              .reduce(function (a, b) { return a + toNum(b.totalValue); }, 0);
           });
           var barColors = FY_MONTHS.map(function (mo) {
             return (targetMo === mo) ? '#059669' : '#1e3a8a';
@@ -4717,10 +4971,12 @@
         $('partyName').addEventListener('input', updatePartyAutocomplete);
         $('transMonthSelect').addEventListener('change', function () {
           state.transMonth = $('transMonthSelect').value;
+          state.transPage = 1;
           renderRecentList();
         });
         $('transYearSelect').addEventListener('change', function () {
           state.transYear = $('transYearSelect').value;
+          state.transPage = 1;
           renderRecentList();
         });
         $('piNo').addEventListener('blur', checkPIDuplicate);
@@ -4735,7 +4991,39 @@
           syncData(true);
         });
         window.addEventListener('offline', updateConnectionStatus);
-        $('recentSearch').addEventListener('input', renderRecentList);
+        $('recentSearch').addEventListener('input', function () {
+          state.transPage = 1;
+          renderRecentList();
+        });
+        if ($('transPageSizeSelect')) {
+          $('transPageSizeSelect').addEventListener('change', function () {
+            state.transPageSize = parseInt(this.value, 10) || 50;
+            state.transPage = 1;
+            renderRecentList();
+          });
+        }
+        if ($('transPrevBtn')) {
+          $('transPrevBtn').addEventListener('click', function () {
+            if (state.transPage > 1) {
+              if (IS_LIVE_GAS && isAppOnline()) {
+                loadTransactionsPage(state.transPage - 1);
+              } else {
+                renderOfflineTransactionsPage(state.transPage - 1);
+              }
+            }
+          });
+        }
+        if ($('transNextBtn')) {
+          $('transNextBtn').addEventListener('click', function () {
+            if (state.transPage < state.transTotalPages) {
+              if (IS_LIVE_GAS && isAppOnline()) {
+                loadTransactionsPage(state.transPage + 1);
+              } else {
+                renderOfflineTransactionsPage(state.transPage + 1);
+              }
+            }
+          });
+        }
         $('logoutBtn').addEventListener('click', logoutUser);
         $('backupDataBtn').addEventListener('click', handleBackupClick);
         $('offlineModeToggle').addEventListener('click', function () { toggleOfflineMode(); });
@@ -4837,7 +5125,10 @@
           populatePartyDatalist: populatePartyDatalist,
           getAllParties: getAllParties,
           handleDeleteEntry: handleDeleteEntry,
-          renderRecentList: renderRecentList
+          renderRecentList: renderRecentList,
+          renderOfflineTransactionsPage: renderOfflineTransactionsPage,
+          updateLiveCalc: updateLiveCalc,
+          loadEntryForEdit: loadEntryForEdit
         };
       })();
   </script>

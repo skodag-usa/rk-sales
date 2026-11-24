@@ -834,7 +834,11 @@ assert.strictEqual(savedPPRowVals[14], 300, 'Product Value should be 300');
 assert.strictEqual(savedPPRowVals[18], 'P + P', 'Commission Type should be P + P');
 assert.strictEqual(savedPPRowVals[19], 0.05, 'Commission % should be 0.05 (Part 1)');
 assert.strictEqual(savedPPRowVals[20], 0, 'Commission Fixed should be 0');
-assert.strictEqual(savedPPRowVals[21], 12.5, 'Commission Value % should be 12.5');
+assert.ok(savedPPRowVals[21] === 12.5 || String(savedPPRowVals[21]).includes('ROUND(200*0.05 + 100*0.025, 2)'), 'Commission Value % formula should be =ROUND(200*0.05 + 100*0.025, 2)');
+assert.strictEqual(ppRes.entry.commP1ProductValue, 200, 'Entry should retain commP1ProductValue 200');
+assert.strictEqual(ppRes.entry.commP2ProductValue, 100, 'Entry should retain commP2ProductValue 100');
+assert.strictEqual(ppRes.entry.commP1Pct, 5, 'Entry should retain commP1Pct 5');
+assert.strictEqual(ppRes.entry.commP2Pct, 2.5, 'Entry should retain commP2Pct 2.5');
 assert.ok(String(savedPPRowVals[22]).includes('V'), 'Total Commission formula should reference V');
 console.log('✓ saveEntry with P + P dual percentage split amounts verified.');
 
@@ -1113,6 +1117,61 @@ assert.throws(() => {
   });
 }, /Calculated product value.*cannot exceed Sales Value/i, 'saveEntry must throw error when multi-part split exceeds productValue');
 console.log('✓ Validation for calculated product value exceeding Sales Value verified.');
+
+// Test 24: On-demand paginated getMonthTransactions (10, 20, 50 records)
+console.log('Test 24: Verifying on-demand paginated getMonthTransactions...');
+const paged10 = sandbox.getMonthTransactions({
+  month: 'NOV',
+  year: '2026',
+  page: 1,
+  pageSize: 10
+});
+assert.ok(paged10.ok, 'getMonthTransactions should return ok: true');
+assert.strictEqual(paged10.page, 1);
+assert.strictEqual(paged10.pageSize, 10);
+assert.ok(Array.isArray(paged10.records), 'records must be an array');
+assert.ok(paged10.records.length <= 10, 'records length must be <= 10');
+assert.ok(paged10.totalCount >= 1, 'totalCount should be >= 1');
+assert.ok(paged10.totalPages >= 1, 'totalPages should be >= 1');
+assert.ok(paged10.perf, 'Performance report should be included in live response');
+
+// Test page size 20 and 50
+const paged20 = sandbox.getMonthTransactions({ month: 'NOV', year: '2026', page: 1, pageSize: 20 });
+assert.strictEqual(paged20.pageSize, 20);
+assert.ok(paged20.records.length <= 20);
+
+const paged50 = sandbox.getMonthTransactions({ month: 'NOV', year: '2026', page: 1, pageSize: 50 });
+assert.strictEqual(paged50.pageSize, 50);
+
+// Test search filter
+const searched = sandbox.getMonthTransactions({ month: 'NOV', year: '2026', page: 1, pageSize: 10, search: 'Apex' });
+assert.ok(searched.ok);
+searched.records.forEach(r => {
+  const match = (r.partyName && r.partyName.toLowerCase().includes('apex')) ||
+                (r.productKeyword && r.productKeyword.toLowerCase().includes('apex')) ||
+                (r.salesPerson && r.salesPerson.toLowerCase().includes('apex'));
+  assert.ok(match, 'All returned records must match search term');
+});
+console.log('✓ On-demand paginated getMonthTransactions (10, 20, 50) verified.');
+
+// Test 31: Verifying dynamic formulas in Google Sheets (GST, Total Value, Commission Value %, Total Commission) and repairSheetFormulas
+console.log('Test 31: Verifying dynamic formulas and repairSheetFormulas...');
+const repairRes = sandbox.repairSheetFormulas(mockSS);
+assert.ok(repairRes.ok, 'repairSheetFormulas must succeed');
+assert.ok(repairRes.repairedRows > 0, 'repairSheetFormulas must repair rows across sheets');
+
+// Check an existing row in NOV-2026 sheet
+const testSh = mockSS.getSheetByName('NOV-2026');
+const lastR = testSh.getLastRow();
+// In MockRange, setFormula stores formula string directly into sheet.data
+const testVals = testSh.getRange(lastR - 1, 1, 1, 32).getValues()[0];
+const gstFormula = String(testVals[16]);
+const totalValFormula = String(testVals[17]);
+const totalCommFormula = String(testVals[22]);
+assert.ok(gstFormula.includes('ROUND((O') && gstFormula.includes('0.18'), 'GST formula must compute 18% GST');
+assert.ok(totalValFormula.includes('ROUND(O') && totalValFormula.includes('+Q'), 'Total Value formula must sum product, freight, and GST');
+assert.ok(totalCommFormula.includes('ROUND(V'), 'Total Commission formula must reference Commission Value %');
+console.log('✓ Dynamic formulas and repairSheetFormulas verified.');
 
 console.log('\n========================================');
 console.log('ALL Code.gs TESTS PASSED SUCCESSFULLY!');
