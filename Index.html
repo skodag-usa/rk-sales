@@ -57,6 +57,18 @@
       border-color: #1e3a8a !important;
       transform: scale(1.15);
     }
+
+    /* Disable spin buttons on number inputs to prevent accidental clicks and trackpad/mouse scroll interference */
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type=number] {
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
   </style>
 </head>
 
@@ -1796,6 +1808,7 @@
         transTotalCount: 0,
         transActiveCount: 0,
         transCurrentRecords: [],
+        transCache: {},
         dashboardData: null,
         dashboardsByFy: {},
         availableFYs: [],
@@ -1817,6 +1830,7 @@
         isSyncing: false,
         loadedFys: {},
         pendingCount: 0,
+        isCustomMulti: false,
         multiParts: []
       };
 
@@ -2010,7 +2024,7 @@
         var comboName = comboParts.join(' + ') || 'CUSTOM';
         var badge = $('commMultiComboBadge');
         if (badge) badge.textContent = comboName;
-        if (state.selectedCommType === 'CUSTOM' || (state.selectedCommType && state.selectedCommType.indexOf('+') !== -1 && state.selectedCommType !== 'P + F' && state.selectedCommType !== 'P + P')) {
+        if (state.isCustomMulti || state.selectedCommType === 'CUSTOM' || (state.selectedCommType && state.selectedCommType.indexOf('+') !== -1 && state.selectedCommType !== 'P + F')) {
           state.selectedCommType = comboName;
         }
 
@@ -2034,7 +2048,7 @@
           html += '      <span>' + partTitle + '</span>';
           html += '    </div>';
           html += '    <div class="flex items-center gap-2">';
-          html += '      <span class="text-[11px] font-semibold text-emerald-700">₹' + partComm.toFixed(2) + ' Comm</span>';
+          html += '      <span data-part-comm-badge="' + idx + '" class="text-[11px] font-semibold text-emerald-700">₹' + partComm.toFixed(2) + ' Comm</span>';
           html += '      <button type="button" data-remove-part="' + idx + '" class="text-slate-400 hover:text-rose-600 font-bold px-1 text-sm transition-colors" title="Remove part">✕</button>';
           html += '    </div>';
           html += '  </div>';
@@ -2084,7 +2098,12 @@
         var multiSec = $('commMultiSection');
         var stdSec = $('standardCommSection');
 
-        var isMulti = (ct === 'CUSTOM' || (ct.indexOf('+') !== -1 && ct !== 'P + F' && ct !== 'P + P'));
+        var isMulti = state.isCustomMulti || (ct === 'CUSTOM' || (ct.indexOf('+') !== -1 && ct !== 'P + F' && ct !== 'P + P'));
+        if (isMulti) {
+          state.isCustomMulti = true;
+        } else {
+          state.isCustomMulti = false;
+        }
 
         if (ct === 'P') {
           if (stdSec) stdSec.classList.remove('hidden');
@@ -2607,6 +2626,9 @@
             if (!btn) return;
             var val = btn.getAttribute('data-val');
             state[stateKey] = val;
+            if (containerId === 'commTypePills') {
+              state.isCustomMulti = (val === 'CUSTOM');
+            }
             var allBtns = box.querySelectorAll('button[data-val]');
             allBtns.forEach(function (b) {
               b.classList.toggle('active', b === btn);
@@ -2639,7 +2661,7 @@
           var match = btns.find(function (b) { return b.getAttribute('data-val') === String(val); });
           var otherEl = otherInputId ? $(otherInputId) : null;
 
-          if (match) {
+          if (match && !(containerId === 'commTypePills' && state.isCustomMulti && val !== 'CUSTOM')) {
             state[stateKey] = String(val);
             btns.forEach(function (b) { b.classList.toggle('active', b === match); });
             if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
@@ -2648,6 +2670,7 @@
             if (customBtn) {
               state[stateKey] = String(val);
               btns.forEach(function (b) { b.classList.toggle('active', b === customBtn); });
+              if (otherEl) { otherEl.classList.add('hidden'); otherEl.value = ''; }
             }
           } else if (otherEl && val !== '' && val !== null && val !== undefined) {
             var otherBtn = btns.find(function (b) { return b.getAttribute('data-val') === '__OTHER__'; });
@@ -2673,6 +2696,67 @@
           var gst = (pv + fr) * 0.18;
           var total = pv + fr + gst;
           var ct = state.selectedCommType || 'P';
+
+          var isMulti = state.isCustomMulti || (ct === 'CUSTOM' || (ct.indexOf('+') !== -1 && ct !== 'P + F' && ct !== 'P + P') || (Array.isArray(state.multiParts) && state.multiParts.length > 0 && $('commMultiSection') && !$('commMultiSection').classList.contains('hidden')));
+
+          if (isMulti && Array.isArray(state.multiParts)) {
+            var totalPComm = 0;
+            var totalFComm = 0;
+            var totalAllocPv = 0;
+
+            state.multiParts.forEach(function (part, idx) {
+              var partPv = toNum(part.pv);
+              totalAllocPv += partPv;
+              var c = 0;
+              if (part.type === 'P') {
+                c = Math.round(partPv * (toNum(part.rate) / 100) * 100) / 100;
+                totalPComm += c;
+              } else {
+                c = toNum(part.rate);
+                totalFComm += c;
+              }
+              var b = $('commPartsContainer') ? $('commPartsContainer').querySelector('[data-part-comm-badge="' + idx + '"]') : null;
+              if (b) b.textContent = '₹' + c.toFixed(2) + ' Comm';
+            });
+
+            totalPComm = Math.round(totalPComm * 100) / 100;
+            totalFComm = Math.round(totalFComm * 100) / 100;
+            var grandTotal = Math.round((totalPComm + totalFComm) * 100) / 100;
+
+            var allocEl = $('commAllocText');
+            if (allocEl) {
+              var diff = Math.round((pv - totalAllocPv) * 100) / 100;
+              if (pv > 0) {
+                if (Math.abs(diff) < 0.01) {
+                  allocEl.innerHTML = '<span class="text-emerald-700 font-bold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (100% matched)</span>';
+                } else if (diff > 0) {
+                  allocEl.innerHTML = '<span class="text-amber-700 font-semibold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (' + fmtINR(diff) + ' unallocated)</span>';
+                } else {
+                  allocEl.innerHTML = '<span class="text-rose-700 font-semibold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (' + fmtINR(-diff) + ' over-allocated)</span>';
+                }
+              } else {
+                allocEl.textContent = 'Allocated: ' + fmtINR(totalAllocPv);
+              }
+            }
+
+            $('calcGst').textContent = fmtINR(gst);
+            $('calcTotal').textContent = fmtINR(total);
+            $('calcCommPct').textContent = fmtINR(totalPComm);
+            $('calcCommFix').textContent = fmtINR(totalFComm);
+            $('calcCommTotal').textContent = fmtINR(grandTotal);
+
+            $('calcCommPctWrap').classList.remove('hidden');
+            $('calcCommFixWrap').classList.remove('hidden');
+
+            var pctLabel = $('calcCommPctLabel');
+            if (pctLabel) pctLabel.textContent = 'All % Parts (' + fmtINR(totalPComm) + ')';
+            var fixLabel = $('calcCommFixLabel');
+            if (fixLabel) fixLabel.textContent = 'All Fixed Parts (' + fmtINR(totalFComm) + ')';
+
+            var grid = $('liveCalcGrid');
+            grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3';
+            return;
+          }
 
           if (ct === 'P + P') {
             var p1Val = toNum($('commP1ProductValue').value);
@@ -2726,64 +2810,6 @@
             if (fixLabel) {
               fixLabel.textContent = 'Comm 2 (' + p2Pct + '% on ' + fmtINR(calcP2) + ')';
             }
-
-            var grid = $('liveCalcGrid');
-            grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3';
-            return;
-          }
-
-          var isMulti = (ct === 'CUSTOM' || (ct.indexOf('+') !== -1 && ct !== 'P + F' && ct !== 'P + P') || (Array.isArray(state.multiParts) && state.multiParts.length > 0 && $('commMultiSection') && !$('commMultiSection').classList.contains('hidden')));
-
-          if (isMulti && Array.isArray(state.multiParts)) {
-            var totalPComm = 0;
-            var totalFComm = 0;
-            var totalAllocPv = 0;
-
-            state.multiParts.forEach(function (part) {
-              var partPv = toNum(part.pv);
-              totalAllocPv += partPv;
-              if (part.type === 'P') {
-                var c = Math.round(partPv * (toNum(part.rate) / 100) * 100) / 100;
-                totalPComm += c;
-              } else {
-                var f = toNum(part.rate);
-                totalFComm += f;
-              }
-            });
-
-            totalPComm = Math.round(totalPComm * 100) / 100;
-            totalFComm = Math.round(totalFComm * 100) / 100;
-            var grandTotal = Math.round((totalPComm + totalFComm) * 100) / 100;
-
-            var allocEl = $('commAllocText');
-            if (allocEl) {
-              var diff = Math.round((pv - totalAllocPv) * 100) / 100;
-              if (pv > 0) {
-                if (Math.abs(diff) < 0.01) {
-                  allocEl.innerHTML = '<span class="text-emerald-700 font-bold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (100% matched)</span>';
-                } else if (diff > 0) {
-                  allocEl.innerHTML = '<span class="text-amber-700 font-semibold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (' + fmtINR(diff) + ' unallocated)</span>';
-                } else {
-                  allocEl.innerHTML = '<span class="text-rose-700 font-semibold">Allocated: ' + fmtINR(totalAllocPv) + ' / ' + fmtINR(pv) + ' (' + fmtINR(-diff) + ' over-allocated)</span>';
-                }
-              } else {
-                allocEl.textContent = 'Allocated: ' + fmtINR(totalAllocPv);
-              }
-            }
-
-            $('calcGst').textContent = fmtINR(gst);
-            $('calcTotal').textContent = fmtINR(total);
-            $('calcCommPct').textContent = fmtINR(totalPComm);
-            $('calcCommFix').textContent = fmtINR(totalFComm);
-            $('calcCommTotal').textContent = fmtINR(grandTotal);
-
-            $('calcCommPctWrap').classList.remove('hidden');
-            $('calcCommFixWrap').classList.remove('hidden');
-
-            var pctLabel = $('calcCommPctLabel');
-            if (pctLabel) pctLabel.textContent = 'All % Parts (' + fmtINR(totalPComm) + ')';
-            var fixLabel = $('calcCommFixLabel');
-            if (fixLabel) fixLabel.textContent = 'All Fixed Parts (' + fmtINR(totalFComm) + ')';
 
             var grid = $('liveCalcGrid');
             grid.className = 'rounded-xl bg-slate-900 text-white p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3';
@@ -2902,6 +2928,7 @@
           $('commP2ProductValue').value = '';
           $('commP2Pct').value = '2.5';
           state.multiParts = [];
+          state.isCustomMulti = false;
           if ($('commPartsContainer')) $('commPartsContainer').innerHTML = '';
           $('remark').value = '';
           $('accountsRemark').value = '';
@@ -2992,8 +3019,11 @@
           $('productValue').value = entry.productValue !== undefined && entry.productValue !== null ? entry.productValue : '';
           $('productValue').dataset.userEdited = 'true';
           $('freightCharges').value = entry.freightCharges !== undefined && entry.freightCharges !== null ? entry.freightCharges : '';
-          setPillValue('commTypePills', 'selectedCommType', entry.commissionType || 'P');
-          updateCommTypeState(entry.commissionType || 'P');
+          var ct = entry.commissionType || 'P';
+          var isCustomCombo = (ct === 'CUSTOM' || (ct.indexOf('+') !== -1 && ct !== 'P + F' && ct !== 'P + P'));
+          state.isCustomMulti = isCustomCombo;
+          setPillValue('commTypePills', 'selectedCommType', ct);
+          updateCommTypeState(ct);
           setPillValue('commPctPills', 'selectedCommPct', String(entry.commissionPct), 'commPctOther');
           $('commissionFixed').value = entry.commissionFixed || '';
 
@@ -3050,7 +3080,7 @@
             $('commP2ProductValue').value = '';
             state.multiParts = JSON.parse(JSON.stringify(entry.commissionParts));
             renderMultiParts();
-          } else if (entry.commissionType && entry.commissionType.indexOf('+') !== -1) {
+          } else if (isCustomCombo || (entry.commissionType && entry.commissionType.indexOf('+') !== -1)) {
             $('commPctProductValue').value = '';
             $('commFixedProductValue').value = '';
             $('commP1ProductValue').value = '';
@@ -3078,6 +3108,52 @@
                 state.multiParts.push({ type: 'F', pv: ff.pv || '', rate: ff.rate || 0 });
               }
             });
+            if (state.multiParts.length === 0) {
+              var tokens = ct.split('+').map(function (s) { return s.trim().toUpperCase(); });
+              var numP = tokens.filter(function (t) { return t === 'P'; }).length;
+              var numF = tokens.filter(function (t) { return t === 'F'; }).length;
+              var entryPv = toNum(entry.productValue);
+              var entryCommVal = toNum(entry.commissionValuePct);
+              var entryCommFixed = toNum(entry.commissionFixed);
+              var rawPct = toNum(entry.commissionPct);
+              var p1Pct = rawPct > 0 ? (rawPct <= 1 ? rawPct * 100 : rawPct) : 5;
+              var p2Pct = 2.5;
+
+              var pIdx = 0;
+              var fIdx = 0;
+              var pAlloc = [];
+              if (numP === 2 && entryPv > 0 && entryCommVal > 0 && p1Pct !== p2Pct) {
+                var solvedP1 = Math.round(((entryCommVal - (p2Pct / 100) * entryPv) / ((p1Pct - p2Pct) / 100)) * 100) / 100;
+                if (solvedP1 >= 0 && solvedP1 <= entryPv) {
+                  pAlloc = [
+                    { pv: solvedP1, rate: p1Pct },
+                    { pv: Math.round((entryPv - solvedP1) * 100) / 100, rate: p2Pct }
+                  ];
+                }
+              }
+              if (pAlloc.length === 0 && numP > 0) {
+                var pShare = entryPv > 0 ? Math.round((entryPv / numP) * 100) / 100 : '';
+                for (var pi = 0; pi < numP; pi++) {
+                  pAlloc.push({
+                    pv: pi === numP - 1 && entryPv > 0 ? Math.max(0, Math.round((entryPv - (pShare * (numP - 1))) * 100) / 100) : pShare,
+                    rate: pi === 0 ? p1Pct : p2Pct
+                  });
+                }
+              }
+              var fShare = numF > 0 ? Math.round((entryCommFixed / numF) * 100) / 100 : 0;
+
+              tokens.forEach(function (tok) {
+                if (tok === 'P') {
+                  var pObj = pAlloc[pIdx] || { pv: '', rate: 5 };
+                  state.multiParts.push({ type: 'P', pv: pObj.pv, rate: pObj.rate });
+                  pIdx++;
+                } else if (tok === 'F') {
+                  var fAmt = fIdx === numF - 1 ? Math.max(0, Math.round((entryCommFixed - (fShare * (numF - 1))) * 100) / 100) : fShare;
+                  state.multiParts.push({ type: 'F', pv: '', rate: fAmt });
+                  fIdx++;
+                }
+              });
+            }
             renderMultiParts();
           } else {
             $('commPctProductValue').value = '';
@@ -3523,7 +3599,7 @@
             }
           }
 
-          var isMulti = (state.selectedCommType === 'CUSTOM' || (state.selectedCommType && state.selectedCommType.indexOf('+') !== -1 && state.selectedCommType !== 'P + F' && state.selectedCommType !== 'P + P') || (Array.isArray(state.multiParts) && state.multiParts.length > 0 && $('commMultiSection') && !$('commMultiSection').classList.contains('hidden')));
+          var isMulti = state.isCustomMulti || (state.selectedCommType === 'CUSTOM' || (state.selectedCommType && state.selectedCommType.indexOf('+') !== -1 && state.selectedCommType !== 'P + F' && state.selectedCommType !== 'P + P') || (Array.isArray(state.multiParts) && state.multiParts.length > 0 && $('commMultiSection') && !$('commMultiSection').classList.contains('hidden')));
 
           // Validate that calculated / split product value does not exceed Sales Value (productValue)
           var pvVal = toNum($('productValue').value);
@@ -3573,8 +3649,8 @@
             productValue: toNum($('productValue').value),
             freightCharges: toNum($('freightCharges').value),
             commissionType: state.selectedCommType,
-            commissionPct: (state.selectedCommType === 'F') ? 0 : (isMulti && pParts.length > 0 ? toNum(pParts[0].rate) : (state.selectedCommType === 'P + P' ? toNum($('commP1Pct').value) : getEffectiveCommPct())),
-            commissionFixed: (state.selectedCommType === 'P' || state.selectedCommType === 'P + P') ? 0 : (isMulti && totalFixedAmt > 0 ? totalFixedAmt : toNum($('commissionFixed').value)),
+            commissionPct: isMulti ? (pParts.length > 0 ? toNum(pParts[0].rate) : 0) : ((state.selectedCommType === 'F') ? 0 : (state.selectedCommType === 'P + P' ? toNum($('commP1Pct').value) : getEffectiveCommPct())),
+            commissionFixed: isMulti ? totalFixedAmt : ((state.selectedCommType === 'P' || state.selectedCommType === 'P + P') ? 0 : toNum($('commissionFixed').value)),
             commPctProductValue: state.selectedCommType === 'P + F' ? toNum($('commPctProductValue').value) : 0,
             commFixedProductValue: state.selectedCommType === 'P + F' ? toNum($('commFixedProductValue').value) : 0,
             commP1ProductValue: isMulti ? (pParts[0] ? toNum(pParts[0].pv) : 0) : (state.selectedCommType === 'P + P' ? toNum($('commP1ProductValue').value) : 0),
@@ -3617,13 +3693,13 @@
                   if (idx >= 0) state.allEntries[idx] = rec;
                   else state.allEntries.unshift(rec);
                   RKSalesDB.saveEntry(rec);
+                  updateTransWithSavedEntry(rec, res.isEdit);
                 }
                 if (res && res.dashboard) {
                   applyDashboardPayload(res.dashboard);
                 } else {
                   state.dashboardDirty = true;
                   state.dashboardsByFy = {};
-                  renderRecentList();
                 }
                 resetForm(true);
                 showToast((res.isEdit ? 'Updated' : 'Saved') + ' Entry #' + res.srNo + ' (' + payload.salesPerson + ') → ' + res.monthYear + ' tab.');
@@ -3655,6 +3731,15 @@
                 }
               });
               totalComm = Math.round((commVal + payload.commissionFixed) * 100) / 100;
+            } else if (payload.commissionType && payload.commissionType.indexOf('+') !== -1 && (payload.commP1ProductValue || payload.commP2ProductValue || payload.commP3ProductValue || payload.commP4ProductValue)) {
+              var pVals = [toNum(payload.commP1ProductValue), toNum(payload.commP2ProductValue), toNum(payload.commP3ProductValue), toNum(payload.commP4ProductValue)];
+              var pRates = [toNum(payload.commP1Pct), toNum(payload.commP2Pct), toNum(payload.commP3Pct), toNum(payload.commP4Pct)];
+              for (var pi = 0; pi < 4; pi++) {
+                if (pVals[pi] > 0 || pRates[pi] > 0) {
+                  commVal = Math.round((commVal + (pVals[pi] * (pRates[pi] / 100))) * 100) / 100;
+                }
+              }
+              totalComm = Math.round((commVal + toNum(payload.commissionFixed)) * 100) / 100;
             } else if (payload.commissionType === 'P + P') {
               var p1Val = payload.commP1ProductValue;
               var p2Val = payload.commP2ProductValue;
@@ -3707,6 +3792,7 @@
             if (IS_LIVE_GAS || state.forceOffline) {
               enqueuePendingPayload(payload);
             }
+            updateTransWithSavedEntry(rec, idx >= 0);
             applyDashboardPayload({
               salesPersons: state.salesPersons,
               allEntries: state.allEntries,
@@ -3770,28 +3856,49 @@
           }
         }
 
-        function renderRecentList() {
+        function getTransCacheKey(month, year, page, pageSize, search) {
+          var m = (month || state.transMonth || currentCalMonth()).toUpperCase();
+          var y = (year || state.transYear || currentYear()).toUpperCase();
+          var p = Math.max(1, page || state.transPage || 1);
+          var ps = pageSize || state.transPageSize || 50;
+          var s = (search !== undefined ? search : ($('recentSearch') ? $('recentSearch').value : '')).trim().toLowerCase();
+          return m + '|' + y + '|' + p + '|' + ps + '|' + s;
+        }
+
+        function renderRecentList(forceFetch) {
           updateTransHint();
           var isLive = IS_LIVE_GAS && isAppOnline();
 
           if (isLive) {
-            loadTransactionsPage(state.transPage || 1);
+            loadTransactionsPage(state.transPage || 1, forceFetch);
           } else {
             renderOfflineTransactionsPage(state.transPage || 1);
           }
         }
 
-        function loadTransactionsPage(page) {
+        function loadTransactionsPage(page, forceFetch) {
           state.transPage = Math.max(1, page || 1);
           var container = $('recentList');
           if (!container) return;
 
+          var pSize = state.transPageSize || 50;
+          var q = ($('recentSearch') ? $('recentSearch').value : '') || '';
+          var cacheKey = getTransCacheKey(state.transMonth, state.transYear, state.transPage, pSize, q);
+
+          if (!forceFetch && state.transCache && state.transCache[cacheKey]) {
+            var cached = state.transCache[cacheKey];
+            state.transPage = cached.page;
+            state.transTotalPages = cached.totalPages;
+            state.transTotalCount = cached.totalCount;
+            state.transActiveCount = cached.activeCount;
+            state.transCurrentRecords = cached.records;
+            renderTransactionsCards(cached.records, cached);
+            return;
+          }
+
           container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500 flex items-center justify-center gap-2">' +
             '<span class="inline-block animate-pulse font-medium">Loading transactions (' + (state.transMonth || '') + ' ' + (state.transYear || '') + ', Page ' + state.transPage + ')...</span>' +
             '</div>';
-
-          var pSize = state.transPageSize || 50;
-          var q = ($('recentSearch') ? $('recentSearch').value : '') || '';
 
           google.script.run
             .withSuccessHandler(function (res) {
@@ -3799,12 +3906,27 @@
                 container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-rose-500">Could not load transactions.</div>';
                 return;
               }
+              var normalizedRecords = (res.records || []).map(normalizeEntry);
+              var meta = {
+                records: normalizedRecords,
+                page: res.page,
+                pageSize: pSize,
+                totalPages: res.totalPages,
+                totalCount: res.totalCount,
+                activeCount: res.activeCount,
+                startIndex: res.startIndex !== undefined ? res.startIndex : ((res.page - 1) * pSize + 1),
+                endIndex: res.endIndex !== undefined ? res.endIndex : Math.min(res.totalCount, res.page * pSize),
+                fetchedAt: Date.now()
+              };
+              if (!state.transCache) state.transCache = {};
+              state.transCache[cacheKey] = meta;
+
               state.transPage = res.page;
               state.transTotalPages = res.totalPages;
               state.transTotalCount = res.totalCount;
               state.transActiveCount = res.activeCount;
-              state.transCurrentRecords = (res.records || []).map(normalizeEntry);
-              renderTransactionsCards(state.transCurrentRecords, res);
+              state.transCurrentRecords = normalizedRecords;
+              renderTransactionsCards(normalizedRecords, meta);
             })
             .withFailureHandler(function (err) {
               container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-rose-500">Error: ' + escapeHtml(err.message || err) + '</div>';
@@ -3945,6 +4067,173 @@
           }
         }
 
+        function updateTransWithSavedEntry(rec, isEdit) {
+          if (!rec) return;
+          var recMo = getEntryMonth(rec);
+          var recYr = getEntryYear(rec);
+          var curMo = state.transMonth || currentCalMonth();
+          var curYr = state.transYear || currentYear();
+          var pSize = state.transPageSize || 50;
+          var q = ($('recentSearch') ? $('recentSearch').value : '').toLowerCase().trim();
+
+          function matchesSearch(r, query) {
+            if (!query) return true;
+            var hay = [
+              r.srNo, r.monthYear, r.salesPerson, r.partyName,
+              r.region, r.poNo, r.piNo, r.invoiceNo, r.productKeyword,
+              r.productName, r.revisit ? 'revisit' : '', r.isDeleted ? 'deleted cancelled struck' : ''
+            ].join(' ').toLowerCase();
+            return hay.indexOf(query) !== -1;
+          }
+
+          var matchesFilter = (curMo === 'ALL' || recMo === curMo) && (curYr === 'ALL' || recYr === curYr) && matchesSearch(rec, q);
+
+          if (isEdit) {
+            // 1. Update in-place in current records list if present
+            if (Array.isArray(state.transCurrentRecords)) {
+              var curIdx = state.transCurrentRecords.findIndex(function (x) { return String(x.responseId) === String(rec.responseId); });
+              if (curIdx >= 0) {
+                if (matchesFilter) {
+                  state.transCurrentRecords[curIdx] = rec;
+                } else {
+                  state.transCurrentRecords.splice(curIdx, 1);
+                  if (state.transTotalCount > 0) state.transTotalCount--;
+                  if (state.transActiveCount > 0 && !rec.isDeleted) state.transActiveCount--;
+                  state.transTotalPages = Math.max(1, Math.ceil(state.transTotalCount / pSize));
+                }
+              }
+            }
+
+            // 2. Update in-place across cached transaction queries
+            if (state.transCache) {
+              Object.keys(state.transCache).forEach(function (k) {
+                var c = state.transCache[k];
+                if (c && Array.isArray(c.records)) {
+                  var cIdx = c.records.findIndex(function (x) { return String(x.responseId) === String(rec.responseId); });
+                  if (cIdx >= 0) {
+                    var kParts = k.split('|');
+                    var kMo = kParts[0];
+                    var kYr = kParts[1];
+                    var kQ = kParts[4] || '';
+                    var matchesK = (kMo === 'ALL' || recMo === kMo) && (kYr === 'ALL' || recYr === kYr) && matchesSearch(rec, kQ);
+                    if (matchesK) {
+                      c.records[cIdx] = rec;
+                    } else {
+                      delete state.transCache[k];
+                    }
+                  }
+                }
+              });
+            }
+          } else {
+            // New entry added: prepend to Page 1 if matches current filter
+            if (matchesFilter) {
+              if (state.transPage === 1) {
+                if (!Array.isArray(state.transCurrentRecords)) state.transCurrentRecords = [];
+                var exists = state.transCurrentRecords.some(function (x) { return String(x.responseId) === String(rec.responseId); });
+                if (!exists) {
+                  state.transCurrentRecords.unshift(rec);
+                  if (state.transCurrentRecords.length > pSize) {
+                    state.transCurrentRecords.pop();
+                  }
+                }
+              }
+              state.transTotalCount = (state.transTotalCount || 0) + 1;
+              if (!rec.isDeleted) state.transActiveCount = (state.transActiveCount || 0) + 1;
+              state.transTotalPages = Math.max(1, Math.ceil(state.transTotalCount / pSize));
+
+              var curKey = getTransCacheKey(curMo, curYr, 1, pSize, q);
+              if (state.transCache && state.transCache[curKey]) {
+                state.transCache[curKey].records = state.transCurrentRecords.slice();
+                state.transCache[curKey].totalCount = state.transTotalCount;
+                state.transCache[curKey].activeCount = state.transActiveCount;
+                state.transCache[curKey].totalPages = state.transTotalPages;
+              }
+              // Invalidate other pages since row rank shifted
+              if (state.transCache) {
+                Object.keys(state.transCache).forEach(function (k) {
+                  var kp = k.split('|');
+                  if (kp[0] === curMo && kp[1] === curYr && parseInt(kp[2], 10) > 1) {
+                    delete state.transCache[k];
+                  }
+                });
+              }
+            } else {
+              // Invalidate target tab cache so it loads fresh when user navigates to it
+              if (state.transCache) {
+                Object.keys(state.transCache).forEach(function (k) {
+                  var kp = k.split('|');
+                  if ((kp[0] === recMo || kp[0] === 'ALL') && (kp[1] === recYr || kp[1] === 'ALL')) {
+                    delete state.transCache[k];
+                  }
+                });
+              }
+            }
+          }
+
+          if ($('recentCountBadge')) {
+            $('recentCountBadge').textContent = (state.transActiveCount || 0) + ' active (' + (state.transTotalCount || 0) + ' total)';
+          }
+
+          if (state.activeTab === 'recent') {
+            renderTransactionsCards(state.transCurrentRecords, {
+              page: state.transPage,
+              pageSize: pSize,
+              totalPages: state.transTotalPages,
+              totalCount: state.transTotalCount,
+              activeCount: state.transActiveCount,
+              startIndex: state.transTotalCount > 0 ? ((state.transPage - 1) * pSize + 1) : 0,
+              endIndex: Math.min(state.transTotalCount, state.transPage * pSize)
+            });
+          }
+        }
+
+        function updateTransWithDeletedEntry(id) {
+          var targetId = String(id).trim();
+          if (!targetId) return;
+
+          var pSize = state.transPageSize || 50;
+
+          if (Array.isArray(state.transCurrentRecords)) {
+            var item = state.transCurrentRecords.find(function (x) { return String(x.responseId) === targetId; });
+            if (item && !item.isDeleted) {
+              item.isDeleted = true;
+              item.remark = (item.remark ? item.remark + ' ' : '') + '[DELETED]';
+              if (state.transActiveCount > 0) state.transActiveCount--;
+            }
+          }
+
+          if (state.transCache) {
+            Object.keys(state.transCache).forEach(function (k) {
+              var c = state.transCache[k];
+              if (c && Array.isArray(c.records)) {
+                var cItem = c.records.find(function (x) { return String(x.responseId) === targetId; });
+                if (cItem && !cItem.isDeleted) {
+                  cItem.isDeleted = true;
+                  cItem.remark = (cItem.remark ? cItem.remark + ' ' : '') + '[DELETED]';
+                  if (c.activeCount > 0) c.activeCount--;
+                }
+              }
+            });
+          }
+
+          if ($('recentCountBadge')) {
+            $('recentCountBadge').textContent = (state.transActiveCount || 0) + ' active (' + (state.transTotalCount || 0) + ' total)';
+          }
+
+          if (state.activeTab === 'recent') {
+            renderTransactionsCards(state.transCurrentRecords, {
+              page: state.transPage,
+              pageSize: pSize,
+              totalPages: state.transTotalPages,
+              totalCount: state.transTotalCount,
+              activeCount: state.transActiveCount,
+              startIndex: state.transTotalCount > 0 ? ((state.transPage - 1) * pSize + 1) : 0,
+              endIndex: Math.min(state.transTotalCount, state.transPage * pSize)
+            });
+          }
+        }
+
         function handleDeleteEntry(targetId, targetBtn) {
           if (!state.currentUser) {
             showLoginModal();
@@ -4001,12 +4290,12 @@
                   found.isDeleted = true;
                   found.remark = (found.remark ? found.remark + ' ' : '') + '[DELETED]';
                 }
+                updateTransWithDeletedEntry(id);
                 if ($('responseId').value.trim() === String(id)) {
                   resetForm(true);
                 }
                 showToast('Entry deleted and struck out in Excel sheet.');
                 switchTab('recent');
-                renderRecentList();
               })
               .withFailureHandler(function (err) {
                 onFinally();
@@ -4024,13 +4313,13 @@
                 enqueuePendingPayload(Object.assign({ isDelete: true }, payload));
               }
             }
+            updateTransWithDeletedEntry(id);
             onFinally();
             if ($('responseId').value.trim() === String(id)) {
               resetForm(true);
             }
             showToast('Entry marked [DELETED] and struck out (Preview/Offline).');
             switchTab('recent');
-            renderRecentList();
           }
         }
 
@@ -5034,16 +5323,38 @@
           if (state.dashboardsByFy) {
             delete state.dashboardsByFy[targetFy];
           }
+          state.transCache = {};
           syncData(true, { skipCache: true, fy: targetFy, all: targetFy === 'ALL' });
+          if (state.activeTab === 'recent') {
+            renderRecentList(true);
+          }
         });
         window.addEventListener('online', function () {
           updateConnectionStatus();
           syncData(true);
         });
         window.addEventListener('offline', updateConnectionStatus);
+
+        // Prevent number fields from blocking double-touch (trackpad) or mouse-wheel scrolling,
+        // and prevent scrolling from accidentally modifying numeric values.
+        function handleNumberFieldWheel(e) {
+          var active = document.activeElement;
+          if (active && active.tagName === 'INPUT' && active.type === 'number') {
+            active.blur();
+          }
+          if (e && e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
+            e.target.blur();
+          }
+        }
+        window.addEventListener('wheel', handleNumberFieldWheel, { capture: true, passive: true });
+        document.addEventListener('wheel', handleNumberFieldWheel, { capture: true, passive: true });
+        var searchDebounceTimer = null;
         $('recentSearch').addEventListener('input', function () {
           state.transPage = 1;
-          renderRecentList();
+          if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+          searchDebounceTimer = setTimeout(function () {
+            renderRecentList();
+          }, 250);
         });
         if ($('transPageSizeSelect')) {
           $('transPageSizeSelect').addEventListener('change', function () {
@@ -5176,9 +5487,17 @@
           getAllParties: getAllParties,
           handleDeleteEntry: handleDeleteEntry,
           renderRecentList: renderRecentList,
+          loadTransactionsPage: loadTransactionsPage,
           renderOfflineTransactionsPage: renderOfflineTransactionsPage,
           updateLiveCalc: updateLiveCalc,
-          loadEntryForEdit: loadEntryForEdit
+          loadEntryForEdit: loadEntryForEdit,
+          renderMultiParts: renderMultiParts,
+          updateCommTypeState: updateCommTypeState,
+          resetForm: resetForm,
+          getTransCacheKey: getTransCacheKey,
+          updateTransWithSavedEntry: updateTransWithSavedEntry,
+          updateTransWithDeletedEntry: updateTransWithDeletedEntry,
+          handleNumberFieldWheel: handleNumberFieldWheel
         };
       })();
   </script>

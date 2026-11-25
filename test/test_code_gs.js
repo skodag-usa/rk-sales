@@ -881,9 +881,59 @@ assert.strictEqual(savedMultiVals[14], 300, 'Product Value should be 300');
 assert.strictEqual(savedMultiVals[18], 'P + P + P + F', 'Commission Type should be P + P + P + F');
 assert.strictEqual(savedMultiVals[19], 0.05, 'Commission % should be 0.05 (Part 1)');
 assert.strictEqual(savedMultiVals[20], 3, 'Commission Fixed should be 3 (Sum of F parts)');
-assert.strictEqual(savedMultiVals[21], 9, 'Commission Value % should be 9 (100@5% + 100@3% + 50@2%)');
+assert.ok(savedMultiVals[21] === 9 || String(savedMultiVals[21]).includes('ROUND(100*0.05 + 100*0.03 + 50*0.02, 2)'), 'Commission Value % formula should be dynamic or 9');
 assert.ok(String(savedMultiVals[22]).includes('+U'), 'Total Commission formula should sum V and U');
 console.log('✓ saveEntry with multi-part P + P + P + F combination verified.');
+
+// Test 23b: saveEntry with multi-part P + P + F + F combination
+console.log('Test 23b: saveEntry with multi-part P + P + F + F (2 P parts + 2 F parts)...');
+const ppffPayload = {
+  authCode: 'RK',
+  authPin: '1234',
+  month: 'NOV',
+  year: '2026',
+  monthYear: 'NOV-2026',
+  salesPerson: 'RK',
+  partyName: 'PPFF Precision Pvt Ltd',
+  region: 'R - Pune',
+  poNo: 'PO-PPFF-1',
+  poDate: '2026-11-23',
+  productKeyword: 'LS',
+  productName: 'Leadshine PPFF Combo',
+  poValue: 400,
+  productValue: 400,
+  freightCharges: 0,
+  commissionType: 'P + P + F + F',
+  commissionParts: [
+    { type: 'P', pv: 150, rate: 5 },
+    { type: 'P', pv: 150, rate: 2 },
+    { type: 'F', pv: 50, rate: 10 },
+    { type: 'F', pv: 50, rate: 15 }
+  ],
+  paymentTerms: 'PI',
+  paymentStatus: 'RCD',
+  wbBilling: 'B'
+};
+const ppffRes = sandbox.saveEntry(ppffPayload);
+assert.ok(ppffRes.ok, 'saveEntry must succeed for P + P + F + F combo');
+const ppffNovSh = mockSS.getSheetByName('NOV-2026');
+assert.ok(ppffNovSh, 'NOV-2026 sheet must exist');
+const ppffRowIdx = ppffNovSh.getLastRow();
+const savedPPFFVals = ppffNovSh.getRange(ppffRowIdx - 1, 1, 1, 32).getValues()[0];
+assert.strictEqual(savedPPFFVals[14], 400, 'Product Value should be 400');
+assert.strictEqual(savedPPFFVals[18], 'P + P + F + F', 'Commission Type should be P + P + F + F');
+assert.strictEqual(savedPPFFVals[19], 0.05, 'Commission % should be 0.05 (Part 1)');
+assert.strictEqual(savedPPFFVals[20], 25, 'Commission Fixed should be 25 (10 + 15)');
+assert.ok(savedPPFFVals[21] === 10.5 || String(savedPPFFVals[21]).includes('ROUND(150*0.05 + 150*0.02, 2)'), 'Commission Value % should be 10.5 (150@5% + 150@2%) or dynamic formula');
+assert.ok(String(savedPPFFVals[22]).includes('+U'), 'Total Commission formula should sum V and U');
+assert.strictEqual(ppffRes.entry.commP1ProductValue, 150, 'commP1ProductValue must be 150');
+assert.strictEqual(ppffRes.entry.commP1Pct, 5, 'commP1Pct must be 5');
+assert.strictEqual(ppffRes.entry.commP2ProductValue, 150, 'commP2ProductValue must be 150');
+assert.strictEqual(ppffRes.entry.commP2Pct, 2, 'commP2Pct must be 2');
+assert.strictEqual(ppffRes.entry.commF1Amt, 10, 'commF1Amt must be 10');
+assert.strictEqual(ppffRes.entry.commF2Amt, 15, 'commF2Amt must be 15');
+assert.strictEqual(ppffRes.entry.totalCommission, 35.5, 'Total commission must equal 35.5 (10.5 P + 25 F)');
+console.log('✓ saveEntry with multi-part P + P + F + F combination verified.');
 
 // Test 24: PI Number uniqueness in Financial Year & self-edit exemption
 console.log('Test 24: Verifying PI number uniqueness in financial year & self-edit exemption...');

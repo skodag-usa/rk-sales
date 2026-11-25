@@ -114,8 +114,25 @@ class MockElement {
     }));
   }
   querySelector(sel) { return null; }
-  querySelectorAll(sel) { return []; }
+  querySelectorAll(sel) {
+    if (this.innerHTML) {
+      if (sel === '[data-part-comm-badge]') {
+        const matches = [];
+        const regex = /<span\s+data-part-comm-badge="(\d+)"[^>]*>([^<]*)<\/span>/g;
+        let m;
+        while ((m = regex.exec(this.innerHTML)) !== null) {
+          matches.push({
+            textContent: m[2],
+            getAttribute: (k) => k === 'data-part-comm-badge' ? m[1] : null
+          });
+        }
+        return matches;
+      }
+    }
+    return [];
+  }
   focus() { }
+  blur() { this.isBlurred = true; }
   reset() { }
   appendChild(c) { this.children.push(c); }
   getContext() { return {}; }
@@ -135,6 +152,7 @@ const mockLocalStorage = {
 
 const domSandbox = {
   document: {
+    activeElement: null,
     getElementById: (id) => {
       if (!elements[id]) elements[id] = new MockElement(id);
       return elements[id];
@@ -341,6 +359,66 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   assert.strictEqual(grandMultiComm, 12, 'Total commission must equal 12');
   console.log('✓ Multi-part P + P + P + F calculation verified.');
 
+  // Test 10b: Multi-part P + P + F + F combination, comboName state lock fix, live calc, and edit mode reconstruction
+  console.log('Test 10b: Verifying multi-part P + P + F + F combination & comboName update...');
+  app.updateCommTypeState('CUSTOM');
+  assert.strictEqual(app.state.isCustomMulti, true, 'isCustomMulti must be true when CUSTOM is selected');
+  app.state.multiParts = [
+    { type: 'P', pv: 150, rate: 5 },
+    { type: 'P', pv: 150, rate: 2 },
+    { type: 'F', pv: 50, rate: 10 },
+    { type: 'F', pv: 50, rate: 15 }
+  ];
+  app.renderMultiParts();
+  assert.strictEqual(app.state.selectedCommType, 'P + P + F + F', 'selectedCommType must be P + P + F + F and not stuck on P + P');
+  assert.strictEqual(elements['commMultiComboBadge'].textContent, 'P + P + F + F', 'commMultiComboBadge must show P + P + F + F');
+
+  elements['productValue'].value = '400';
+  elements['freightCharges'].value = '0';
+  app.updateLiveCalc();
+  assert.ok(elements['calcCommPct'].textContent.includes('10.5'), 'All % Parts should be 10.5 (150@5% + 150@2%)');
+  assert.ok(elements['calcCommFix'].textContent.includes('25'), 'All Fixed Parts should be 25 (10 + 15)');
+  assert.ok(elements['calcCommTotal'].textContent.includes('35.5'), 'Total Commission should be 35.5');
+
+  // Verify badge updates inside parts container
+  const partBadges = elements['commPartsContainer'].querySelectorAll('[data-part-comm-badge]');
+  assert.strictEqual(partBadges.length, 4, 'There should be 4 commission part badges');
+  assert.ok(partBadges[0].textContent.includes('7.5'), 'Part 1 badge should show ₹7.50 Comm');
+  assert.ok(partBadges[1].textContent.includes('3.0'), 'Part 2 badge should show ₹3.00 Comm');
+  assert.ok(partBadges[2].textContent.includes('10'), 'Part 3 badge should show ₹10.00 Comm');
+  assert.ok(partBadges[3].textContent.includes('15'), 'Part 4 badge should show ₹15.00 Comm');
+
+  // Verify loadEntryForEdit with P + P + F + F without cached commissionParts (reconstruction from sheet data)
+  console.log('Verifying loadEntryForEdit reconstruction for P + P + F + F...');
+  app.state.currentUser = { code: 'RK', name: 'Rahul Kodag', role: 'ADMIN', pin: '1234' };
+  app.loadEntryForEdit({
+    srNo: 101,
+    responseId: 'RK-TEST-PPFF',
+    month: 'NOV',
+    year: '2026',
+    salesPerson: 'RK',
+    partyName: 'Reconstructed PPFF Corp',
+    productValue: 400,
+    freightCharges: 0,
+    commissionType: 'P + P + F + F',
+    commissionPct: 5,
+    commissionFixed: 25,
+    commissionValuePct: 13.75,
+    totalCommission: 38.75
+  });
+  assert.strictEqual(app.state.selectedCommType, 'P + P + F + F', 'Editing entry should retain P + P + F + F');
+  assert.strictEqual(app.state.isCustomMulti, true, 'isCustomMulti must be true in edit mode');
+  assert.strictEqual(app.state.multiParts.length, 4, 'Reconstructed multiParts must have 4 items');
+  assert.strictEqual(app.state.multiParts[0].type, 'P', 'Part 1 type must be P');
+  assert.strictEqual(app.state.multiParts[0].pv, 150, 'Part 1 pv must be 150');
+  assert.strictEqual(app.state.multiParts[0].rate, 5, 'Part 1 rate must be 5');
+  assert.strictEqual(app.state.multiParts[1].type, 'P', 'Part 2 type must be P');
+  assert.strictEqual(app.state.multiParts[1].pv, 250, 'Part 2 pv must be 250');
+  assert.strictEqual(app.state.multiParts[1].rate, 2.5, 'Part 2 rate must be 2.5');
+  assert.strictEqual(app.state.multiParts[2].type, 'F', 'Part 3 type must be F');
+  assert.strictEqual(app.state.multiParts[3].type, 'F', 'Part 4 type must be F');
+  console.log('✓ Multi-part P + P + F + F calculation & edit mode reconstruction verified.');
+
   // Test 11: Transactions month filter & soft-deleted rendering
   console.log('Test 11: Verifying transactions month filter and deleted entry rendering...');
   assert.ok(elements['transMonthSelect'].innerHTML.includes('value="NOV"'), 'transMonthSelect should contain NOV option');
@@ -491,6 +569,103 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   assert.strictEqual(elements['kpiEntries'].textContent, '88 entries', 'Selecting cached FY 25-26 should render 88 entries immediately from cache');
   console.log('✓ Multi-year dashboard loading and per-year caching verified.');
 
+  // Test 11e: Transaction page caching and in-place updates without refetching
+  console.log('Test 11e: Verifying Transaction caching and in-place updates without refetching...');
+  assert.strictEqual(typeof app.getTransCacheKey, 'function', 'getTransCacheKey must be exported');
+  assert.strictEqual(typeof app.updateTransWithSavedEntry, 'function', 'updateTransWithSavedEntry must be exported');
+  assert.strictEqual(typeof app.updateTransWithDeletedEntry, 'function', 'updateTransWithDeletedEntry must be exported');
+
+  // Verify getTransCacheKey
+  const cKey = app.getTransCacheKey('NOV', '2026', 1, 50, '');
+  assert.strictEqual(cKey, 'NOV|2026|1|50|', 'getTransCacheKey must format query parameters consistently');
+
+  // 1. Verify cached load does not show loading spinner and returns cached data immediately
+  app.state.transMonth = 'NOV';
+  app.state.transYear = '2026';
+  app.state.transPage = 1;
+  app.state.transPageSize = 50;
+  app.state.activeTab = 'recent';
+  const mockCacheRecord = {
+    srNo: 42,
+    responseId: 'RK-CACHED-1',
+    month: 'NOV',
+    year: '2026',
+    monthYear: 'NOV-2026',
+    salesPerson: 'RK',
+    partyName: 'Cached Dynamics Ltd',
+    region: 'R - Pune',
+    poNo: 'PO-42',
+    productKeyword: 'LS',
+    productValue: 1000,
+    totalValue: 1180,
+    totalCommission: 50,
+    isDeleted: false
+  };
+  app.state.transCache[cKey] = {
+    records: [mockCacheRecord],
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+    totalCount: 1,
+    activeCount: 1,
+    startIndex: 1,
+    endIndex: 1
+  };
+
+  app.loadTransactionsPage(1);
+  assert.ok(elements['recentList'].innerHTML.includes('Cached Dynamics Ltd'), 'loadTransactionsPage must immediately render cached records');
+  assert.ok(!elements['recentList'].innerHTML.includes('Loading transactions'), 'loadTransactionsPage must NOT show loading spinner on cache hit');
+  assert.strictEqual(app.state.transCurrentRecords.length, 1);
+  assert.strictEqual(app.state.transCurrentRecords[0].partyName, 'Cached Dynamics Ltd');
+
+  // 2. Verify in-place update of existing entry
+  const updatedRecord = Object.assign({}, mockCacheRecord, {
+    partyName: 'Updated Dynamics Ltd',
+    totalValue: 2360
+  });
+  app.updateTransWithSavedEntry(updatedRecord, true);
+  assert.strictEqual(app.state.transCurrentRecords[0].partyName, 'Updated Dynamics Ltd', 'transCurrentRecords must update in-place on edit');
+  assert.strictEqual(app.state.transCache[cKey].records[0].partyName, 'Updated Dynamics Ltd', 'transCache must update in-place on edit');
+  assert.ok(elements['recentList'].innerHTML.includes('Updated Dynamics Ltd'), 'DOM must reflect updated record without refetching');
+
+  // 3. Verify in-place addition of new entry
+  const newRecord = {
+    srNo: 43,
+    responseId: 'RK-NEW-1',
+    month: 'NOV',
+    year: '2026',
+    monthYear: 'NOV-2026',
+    salesPerson: 'RK',
+    partyName: 'New Arrival Automation',
+    region: 'R - Pune',
+    poNo: 'PO-43',
+    productKeyword: 'LS',
+    productValue: 500,
+    totalValue: 590,
+    totalCommission: 25,
+    isDeleted: false
+  };
+  app.updateTransWithSavedEntry(newRecord, false);
+  assert.strictEqual(app.state.transCurrentRecords.length, 2, 'transCurrentRecords length must be 2 after prepend');
+  assert.strictEqual(app.state.transCurrentRecords[0].responseId, 'RK-NEW-1', 'New entry must be prepended to page 1');
+  assert.strictEqual(app.state.transTotalCount, 2, 'transTotalCount must increment to 2');
+  assert.strictEqual(app.state.transCache[cKey].records[0].responseId, 'RK-NEW-1', 'transCache page 1 must have new entry prepended');
+  assert.ok(elements['recentList'].innerHTML.includes('New Arrival Automation'), 'DOM must reflect new entry without refetching');
+
+  // 4. Verify in-place deletion of an entry
+  app.updateTransWithDeletedEntry('RK-NEW-1');
+  assert.strictEqual(app.state.transCurrentRecords[0].isDeleted, true, 'Deleted entry must be marked isDeleted: true');
+  assert.strictEqual(app.state.transCache[cKey].records[0].isDeleted, true, 'Deleted entry in cache must be marked isDeleted: true');
+  assert.strictEqual(app.state.transActiveCount, 1, 'transActiveCount must decrement to 1');
+  assert.ok(elements['recentList'].innerHTML.includes('CANCELLED'), 'DOM must display CANCELLED badge on deleted entry');
+  assert.ok(elements['recentList'].innerHTML.includes('Struck Out'), 'DOM must display Struck Out label on deleted entry');
+
+  // 5. Verify explicit manual sync clears transaction cache
+  const refreshClickListeners = elements['refreshBtn'].listeners['click'] || [];
+  refreshClickListeners.forEach(fn => fn());
+  assert.strictEqual(Object.keys(app.state.transCache).length, 0, 'Clicking refreshBtn (Sync) must purge transCache');
+  console.log('✓ Transaction page caching and in-place updates without refetching verified.');
+
   // Test 12: Party name autocomplete: suppressed until 2 characters, enabled at 2+ characters
   console.log('Test 12: Verifying party name autocomplete behavior (< 2 chars suppressed, >= 2 chars active)...');
   app.state.parties = ['Tata Motors', 'TCS', 'Reliance Industries', 'Mahindra'];
@@ -527,6 +702,28 @@ console.log('Test 7: Verifying offline auth credential encryption & hashing...')
   assert.ok(elements['partyList'].innerHTML.includes('TCS'), 'partyList must include TCS for lowercase "tc"');
 
   console.log('✓ Party name autocomplete threshold (< 2 chars suppressed, >= 2 chars active) verified.');
+
+  // Test 13: Number field wheel scroll unblocking (mouse wheel & double-touch trackpad scroll)
+  console.log('Test 13: Verifying number field wheel scroll unblocking (mouse wheel & trackpad double-touch)...');
+  const numInput = elements['productValue'];
+  numInput.tagName = 'INPUT';
+  numInput.type = 'number';
+  numInput.isBlurred = false;
+  domSandbox.document.activeElement = numInput;
+
+  // Simulate wheel event while number field is focused
+  app.handleNumberFieldWheel({ target: numInput });
+  assert.strictEqual(numInput.isBlurred, true, 'Focused number input must be blurred on wheel event to allow smooth scroll and prevent value change');
+
+  // Verify non-number inputs (e.g., text) are not blurred
+  const textInput = elements['partyName'];
+  textInput.tagName = 'INPUT';
+  textInput.type = 'text';
+  textInput.isBlurred = false;
+  domSandbox.document.activeElement = textInput;
+  app.handleNumberFieldWheel({ target: textInput });
+  assert.strictEqual(textInput.isBlurred, false, 'Text input must not be blurred on wheel event');
+  console.log('✓ Number field wheel scroll unblocking verified.');
 
   console.log('✓ Headless DOM simulation verified.');
   console.log('\n========================================');

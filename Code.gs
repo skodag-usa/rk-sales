@@ -1504,6 +1504,30 @@ function saveEntry(payload) {
       id
     ];
 
+    var multiPParts = [];
+    var pParts = [];
+    var fParts = [];
+    if (parts) {
+      parts.forEach(function (pt) {
+        if (String(pt.type || '').toUpperCase() === 'P') {
+          pParts.push(pt);
+          var ptPv = toNum_(pt.pv !== undefined ? pt.pv : pt.productValue);
+          var ptRate = toNum_(pt.rate !== undefined ? pt.rate : pt.pct) / 100;
+          multiPParts.push({ pv: ptPv, pct: ptRate });
+        } else {
+          fParts.push(pt);
+        }
+      });
+    } else if (payload.commP1ProductValue || payload.commP2ProductValue || payload.commP3ProductValue || payload.commP4ProductValue) {
+      var pValsList = [toNum_(payload.commP1ProductValue), toNum_(payload.commP2ProductValue), toNum_(payload.commP3ProductValue), toNum_(payload.commP4ProductValue)];
+      var pRatesList = [toNum_(payload.commP1Pct), toNum_(payload.commP2Pct), toNum_(payload.commP3Pct), toNum_(payload.commP4Pct)];
+      for (var pi = 0; pi < 4; pi++) {
+        if (pValsList[pi] > 0 || pRatesList[pi] > 0) {
+          multiPParts.push({ pv: pValsList[pi], pct: (pRatesList[pi] || 0) / 100 });
+        }
+      }
+    }
+
     // Save into the target month sheet:
     // When updating in-place on the same sheet, write directly to the known row without re-inserting summary rows
     var monthSheet = getMonthSheet_(ss, monthYear);
@@ -1523,7 +1547,8 @@ function saveEntry(payload) {
       p1Pct: p1Pct,
       p2Val: p2Val,
       p2Pct: p2Pct,
-      commVal: commVal
+      commVal: commVal,
+      multiPParts: multiPParts
     });
     timer.mark('row_write_upsert');
 
@@ -1583,10 +1608,22 @@ function saveEntry(payload) {
       commissionFixed: commFix,
       commissionValuePct: commVal,
       totalCommission: totalComm,
-      commP1ProductValue: (commissionType === 'P + P') ? p1Val : (payload.commP1ProductValue ? toNum_(payload.commP1ProductValue) : undefined),
-      commP1Pct: (commissionType === 'P + P') ? round2_(p1Pct * 100) : (payload.commP1Pct ? toNum_(payload.commP1Pct) : undefined),
-      commP2ProductValue: (commissionType === 'P + P') ? p2Val : (payload.commP2ProductValue ? toNum_(payload.commP2ProductValue) : undefined),
-      commP2Pct: (commissionType === 'P + P') ? round2_(p2Pct * 100) : (payload.commP2Pct ? toNum_(payload.commP2Pct) : undefined),
+      commP1ProductValue: (commissionType === 'P + P') ? p1Val : (payload.commP1ProductValue ? toNum_(payload.commP1ProductValue) : (pParts[0] ? toNum_(pParts[0].pv) : undefined)),
+      commP1Pct: (commissionType === 'P + P') ? round2_(p1Pct * 100) : (payload.commP1Pct ? toNum_(payload.commP1Pct) : (pParts[0] ? toNum_(pParts[0].rate) : undefined)),
+      commP2ProductValue: (commissionType === 'P + P') ? p2Val : (payload.commP2ProductValue ? toNum_(payload.commP2ProductValue) : (pParts[1] ? toNum_(pParts[1].pv) : undefined)),
+      commP2Pct: (commissionType === 'P + P') ? round2_(p2Pct * 100) : (payload.commP2Pct ? toNum_(payload.commP2Pct) : (pParts[1] ? toNum_(pParts[1].rate) : undefined)),
+      commP3ProductValue: payload.commP3ProductValue ? toNum_(payload.commP3ProductValue) : (pParts[2] ? toNum_(pParts[2].pv) : undefined),
+      commP3Pct: payload.commP3Pct ? toNum_(payload.commP3Pct) : (pParts[2] ? toNum_(pParts[2].rate) : undefined),
+      commP4ProductValue: payload.commP4ProductValue ? toNum_(payload.commP4ProductValue) : (pParts[3] ? toNum_(pParts[3].pv) : undefined),
+      commP4Pct: payload.commP4Pct ? toNum_(payload.commP4Pct) : (pParts[3] ? toNum_(pParts[3].rate) : undefined),
+      commF1ProductValue: payload.commF1ProductValue ? toNum_(payload.commF1ProductValue) : (fParts[0] ? toNum_(fParts[0].pv) : undefined),
+      commF1Amt: payload.commF1Amt ? toNum_(payload.commF1Amt) : (fParts[0] ? toNum_(fParts[0].rate) : undefined),
+      commF2ProductValue: payload.commF2ProductValue ? toNum_(payload.commF2ProductValue) : (fParts[1] ? toNum_(fParts[1].pv) : undefined),
+      commF2Amt: payload.commF2Amt ? toNum_(payload.commF2Amt) : (fParts[1] ? toNum_(fParts[1].rate) : undefined),
+      commF3ProductValue: payload.commF3ProductValue ? toNum_(payload.commF3ProductValue) : (fParts[2] ? toNum_(fParts[2].pv) : undefined),
+      commF3Amt: payload.commF3Amt ? toNum_(payload.commF3Amt) : (fParts[2] ? toNum_(fParts[2].rate) : undefined),
+      commF4ProductValue: payload.commF4ProductValue ? toNum_(payload.commF4ProductValue) : (fParts[3] ? toNum_(fParts[3].pv) : undefined),
+      commF4Amt: payload.commF4Amt ? toNum_(payload.commF4Amt) : (fParts[3] ? toNum_(fParts[3].rate) : undefined),
       commPctProductValue: (commissionType === 'P + F') ? toNum_(payload.commPctProductValue) : undefined,
       commFixedProductValue: (commissionType === 'P + F') ? toNum_(payload.commFixedProductValue) : undefined,
       commissionParts: payload.commissionParts || undefined,
@@ -2303,8 +2340,33 @@ function upsert_(sh, rowNum, row, optMeta) {
         }
       }
       sh.getRange(targetRow, 22).setFormula('=ROUND(' + p1Val + '*' + p1Pct + ' + ' + p2Val + '*' + p2Pct + ', 2)');
+    } else if (rowCommType.indexOf('+') !== -1 && rowCommType.indexOf('P') !== -1) {
+      if (optMeta && Array.isArray(optMeta.multiPParts) && optMeta.multiPParts.length > 0) {
+        var terms = optMeta.multiPParts.map(function (p) {
+          return p.pv + '*' + p.pct;
+        });
+        sh.getRange(targetRow, 22).setFormula('=ROUND(' + terms.join(' + ') + ', 2)');
+      } else if (rowCommType.indexOf('P + P') !== -1) {
+        var p1Pct = rowPct > 0 ? rowPct : 0.05;
+        var p2Pct = 0.025;
+        var p1Val = rowPv;
+        var p2Val = 0;
+        if (rowPv > 0 && rowCommVal > 0 && p1Pct !== p2Pct) {
+          var solvedP1 = Math.round(((rowCommVal - p2Pct * rowPv) / (p1Pct - p2Pct)) * 100) / 100;
+          if (solvedP1 >= 0 && solvedP1 <= rowPv) {
+            p1Val = solvedP1;
+            p2Val = Math.round((rowPv - solvedP1) * 100) / 100;
+          }
+        }
+        sh.getRange(targetRow, 22).setFormula('=ROUND(' + p1Val + '*' + p1Pct + ' + ' + p2Val + '*' + p2Pct + ', 2)');
+      } else if (rowCommVal > 0 && rowPct > 0) {
+        var customPctPv = Math.round((rowCommVal / rowPct) * 100) / 100;
+        sh.getRange(targetRow, 22).setFormula('=ROUND(' + customPctPv + '*T' + targetRow + ', 2)');
+      } else {
+        sh.getRange(targetRow, 22).setValue(rowCommVal);
+      }
     } else {
-      // Multi-part combination (e.g. P + P + P + F, P + F + F, etc.)
+      // Multi-part combination without P (e.g. F + F)
       sh.getRange(targetRow, 22).setValue(rowCommVal);
     }
 
@@ -2364,7 +2426,7 @@ function repairSheetFormulas(optSS) {
           sh.getRange(rowIdx, 22).setFormula('=IF(OR(S' + rowIdx + '="P",S' + rowIdx + '="P + F"),ROUND(O' + rowIdx + '*T' + rowIdx + ', 2),0)');
         } else if (commType === 'F') {
           sh.getRange(rowIdx, 22).setValue(0);
-        } else if (commType === 'P + P') {
+        } else if (commType === 'P + P' || (commType.indexOf('+') !== -1 && commType.indexOf('P + P') !== -1)) {
           var p1Pct = pct > 0 ? pct : 0.05;
           var p2Pct = 0.025;
           var p1Val = pv;
@@ -2377,6 +2439,9 @@ function repairSheetFormulas(optSS) {
             }
           }
           sh.getRange(rowIdx, 22).setFormula('=ROUND(' + p1Val + '*' + p1Pct + ' + ' + p2Val + '*' + p2Pct + ', 2)');
+        } else if (commType.indexOf('+') !== -1 && commType.indexOf('P') !== -1 && pct > 0 && commVal > 0) {
+          var customPctPv = Math.round((commVal / pct) * 100) / 100;
+          sh.getRange(rowIdx, 22).setFormula('=ROUND(' + customPctPv + '*T' + rowIdx + ', 2)');
         }
 
         // Col 23: Total Commission

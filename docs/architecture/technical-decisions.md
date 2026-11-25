@@ -200,4 +200,35 @@
     - Saving or deleting an entry invalidates `state.dashboardsByFy = {}`, ensuring fresh aggregates are retrieved when navigating between years.
     - Manual `#refreshBtn` click purges the active year from `state.dashboardsByFy` and executes a cache-bypassed sync (`skipCache: true`).
 
-Source: `Code.gs`, `AGENTS.md`, `docs/superpowers/plans/`.
+21. **Custom Multi-Commission Split (`P + P + F + F` and Arbitrary P + F Combinations)**
+    - **Problem**: When users selected "Multi / Custom" (`CUSTOM`) and built combinations such as `P + P + F + F`:
+      1. `renderMultiParts()` set `state.selectedCommType = 'P + P'` initially, and due to a lock check (`state.selectedCommType !== 'P + P'`), addition of Fixed (`F`) parts was ignored and the type remained stuck at `'P + P'`.
+      2. `updateLiveCalc()` branched into the standard 2-input `#commPPSplitSection`, reading empty inputs and computing ₹0.
+      3. `handleSubmit()` discarded Fixed parts in the ternary fallback when `selectedCommType` matched `'P + P'`.
+      4. `loadEntryForEdit()` wiped `state.multiParts` to empty when discrete client fields were absent in raw sheet rows.
+      5. Backend `upsert_` wrote static values in Col 22 instead of dynamic spreadsheet formulas, and `savedRec` dropped P3, P4, and F1..F4 fields.
+    - **Solution**:
+      - Introduced `state.isCustomMulti` flag in `Index.html` to manage custom multi state independently.
+      - Updated `renderMultiParts()` to unconditionally track `comboName` (e.g. `'P + P + F + F'`) and added `data-part-comm-badge` for live card updates.
+      - Branched `updateLiveCalc()` to evaluate `isMulti` before 2-input splits, calculating all P parts and F parts correctly.
+      - Refined `handleSubmit()` and offline saves to always preserve `totalFixedAmt` and all discrete P/F part allocations.
+      - Enhanced `loadEntryForEdit()` with token-based algebraic reconstruction from `entry.commissionType`, `productValue`, `commissionValuePct`, and `commissionFixed`.
+      - Updated `upsert_` and `repairSheetFormulas` in `Code.gs` to generate dynamic spreadsheet formulas `=ROUND(p1*r1 + p2*r2 + ..., 2)` for Col 22 and `=ROUND(V+U, 2)` for Col 23, and expanded `savedRec` to return all discrete part fields.
+
+22. **Transaction Page Query Caching & In-Place Updates (`state.transCache`)**
+    - **Problem**: Switching to the Transactions tab (`#viewRecent`) previously triggered `renderRecentList()` and `loadTransactionsPage()` on every navigation, displaying a loading spinner and executing `google.script.run.getMonthTransactions(...)` even if data for the current month, year, page, and search query had already been loaded. Additionally, creating, editing, or deleting an entry discarded client list state and re-fetched the entire transactions page over the network.
+    - **Solution**:
+      - **Client-Side Query Caching**: Added `state.transCache` indexed by composite key `getTransCacheKey(month, year, page, pageSize, search)` (`${month}|${year}|${page}|${pageSize}|${search}`). `loadTransactionsPage(page, forceFetch)` immediately renders cached records on cache hits without displaying the loading spinner or issuing network RPCs.
+      - **In-Place Updates (`updateTransWithSavedEntry`)**: When saving an entry, if `isEdit: true`, the record is updated in-place in `state.transCurrentRecords` and across all matching keys in `state.transCache`. If a new entry is created and matches the current filter, it is prepended to page 1, counts are updated, and shifted pages are invalidated.
+      - **In-Place Deletions (`updateTransWithDeletedEntry`)**: Soft deletion marks the entry as cancelled in-place in `state.transCurrentRecords` and `state.transCache`, decrementing active counts without issuing network calls.
+      - **Explicit Sync**: Manual sync (`#refreshBtn`) purges `state.transCache = {}` and executes `renderRecentList(true)`. Search query input is debounced by 250ms.
+
+23. **Number Field Wheel & Trackpad Scroll Unblocking (`handleNumberFieldWheel`)**
+    - **Problem**: When a user focused on an `<input type="number">` (e.g. Sales Value, Commission %, etc.) or scrolled with a mouse wheel or two-finger trackpad gesture ("double touch scroll"), browser default behavior in Chromium, Edge, Firefox, and WebKit intercepted the wheel event to increment or decrement the numeric input and blocked page/container scrolling.
+    - **Solution**:
+      - Registered global capture-phase `wheel` event listeners on `window` and `document` (`{ capture: true, passive: true }`) executing `handleNumberFieldWheel`.
+      - When `document.activeElement` or `event.target` is an `<input type="number">`, `blur()` is called synchronously in the capture phase.
+      - Dropping focus before default action processing stops the browser from altering numeric values. Leaving the event unprevented (`passive: true`) allows native momentum scrolling to scroll the window or modal smoothly without blockage.
+      - Added CSS to disable spinner steppers (`::-webkit-outer-spin-button`, `::-webkit-inner-spin-button`, `-moz-appearance: textfield`, `appearance: textfield`) across all browsers.
+
+Source: `Code.gs`, `Index.html`, `AGENTS.md`, `docs/superpowers/plans/`.
